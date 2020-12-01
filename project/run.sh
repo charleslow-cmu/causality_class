@@ -1,0 +1,2 @@
+clear
+Rscript gin.R
