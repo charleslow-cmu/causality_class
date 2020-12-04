@@ -1,2 +1,2 @@
 clear
-Rscript gin.R
+sudo Rscript gin.R
