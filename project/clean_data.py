@@ -6,7 +6,11 @@ from sklearn.linear_model import LinearRegression
 import itertools
 import seaborn as sns
 import matplotlib.pyplot as plt
+import re
 
+
+def clean(txt):
+    return re.sub('[^a-zA-Z]+', '', txt)
 
 class Actors():
 
@@ -21,12 +25,11 @@ class Actors():
             n = len(cast_list)
             for j in range(min(n, max_actors)):
                 v = cast_list[j]
-                cast_id = v["cast_id"]
-                name = v["name"]
-                if cast_id not in self.actors:
-                    self.actors[cast_id] = {"name": name, "count": 1}
+                name = clean(v["name"])
+                if name not in self.actors:
+                    self.actors[name] = {"count": 1}
                 else:
-                    self.actors[cast_id]["count"] += 1
+                    self.actors[name]["count"] += 1
         print(f"Found {len(self.actors)} unique actors.")
 
     # Sort actors by count
@@ -48,6 +51,9 @@ class Actors():
         self.actors = new_actors
         print(f"Selected top {num_actors} actors.")
 
+    #def id_to_name(self, cast_id):
+    #    return self.actors[cast_id]["name"]
+
 class Movies():
     def __init__(self, movies, credits, actors):
         self.movies = movies 
@@ -59,12 +65,12 @@ class Movies():
     def construct_movies(self, min_actors=2):
         for i in range(self.movies.shape[0]):
             cast_list = json.loads(self.credits.loc[i, "cast"])
-            cast_set = set([d["cast_id"] for d in cast_list])
+            cast_set = set([clean(d["name"]) for d in cast_list])
             cast_set = cast_set.intersection(self.actor_set)
             cast_count = len(cast_set)
 
             genre_list = json.loads(self.movies.loc[i, "genres"])
-            genre_list = [d["name"] for d in genre_list]
+            genre_list = [clean(d["name"]) for d in genre_list]
             if cast_count >= min_actors:
                 movie_id = self.credits.loc[i, "movie_id"]
                 self.movie_d[movie_id] = {
@@ -79,8 +85,8 @@ class Movies():
         df = pd.DataFrame.from_dict(self.movie_d, orient="index")
         mlb = MultiLabelBinarizer()
         cast_df = pd.DataFrame(mlb.fit_transform(df["cast"]),
-                               columns=[f"a{k}" for k in mlb.classes_],
-                               index=df.index)
+                    columns=[f"a{k}" for k in mlb.classes_],
+                    index=df.index)
         print(f"{cast_df.shape[1]} actor columns.")
         genre_df = pd.DataFrame(mlb.fit_transform(df["genre"]),
                                 columns=[f"g{k}" for k in mlb.classes_],
@@ -117,12 +123,14 @@ if __name__ == "__main__":
     actors = Actors(credits)
     actors.construct_actors(max_actors=5)
     actors.sort_actors()
-    actors.threshold_actors(num_actors=-1)
+    actors.threshold_actors(num_actors=25)
+
     
     # Construct movies
     m = Movies(movies, credits, actors)
     m.construct_movies(min_actors=2)
     df = m.return_movies_df()
+    print(df)
     print(df.columns)
     df.to_csv("data/cleaned.csv", index=False)
 
