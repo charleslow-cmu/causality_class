@@ -4,6 +4,7 @@ import numpy as np
 from itertools import product
 import math
 from copy import deepcopy
+import matplotlib.pyplot as plt
 
 def dicttostr(d):
     l = []
@@ -57,6 +58,9 @@ def make_jpd(jpd, parents, name):
     df = pd.DataFrame(lrows)
     df = sort_columns(df)
 
+    if parents is None:
+        df["p"] *= make_column(d=int(df.shape[0]/2))
+        return df
 
     # Make cpd from direct parents 
     vnames = [v for v in parents] + [name]
@@ -109,7 +113,6 @@ class Graph:
         if len(self.vars) == 1:
             d = {name: [0,1], "p": make_column(d=1)}
             self.jpd = pd.DataFrame(d)
-            #print(self.jpd)
             return
 
         # Adding subsequent vars
@@ -117,12 +120,11 @@ class Graph:
         assert math.isclose(sum(self.jpd["p"]), 1), "JPD does not sum to 1"
         return
 
-    def calc_mi(self, X: str, Y: str, normalize=True):
+    def calc_mi(self, X: str, Y: str, normalize=False):
         mi = 0
         for x in [0, 1]:
             for y in [0, 1]:
                 Pxy = lookup(self.jpd, {X: x, Y: y})
-                #import IPython; IPython.embed(); exit(1)
                 Px = lookup(self.jpd, {X: x})
                 Py = lookup(self.jpd, {Y: y})
                 mi += Pxy * math.log(Pxy / (Px * Py))
@@ -137,7 +139,7 @@ class Graph:
         print(f"MI({X};{Y}) = {mi:.10f}")
         return mi
     
-    def calc_condmi(self, X: str, Y: str, Z: str, normalize=True):
+    def calc_condmi(self, X: str, Y: str, Z: str, normalize=False):
         mi = 0
         combn = [[0,1]] * 3
         for x,y,z in product(*combn):
@@ -166,16 +168,27 @@ class Variable:
 
 
 
-g = Graph()
-g.add_variable("L1", None)
-g.add_variable("L2", "L1")
-g.add_variable("X1", "L1")
-g.add_variable("X2", "L1")
-g.add_variable("X3", "L1")
-g.add_variable("X4", "L2")
-g.add_variable("X5", "L2")
-g.add_variable("X6", "L2")
-g.calc_condmi("X1", "X2", "X4")
-g.calc_condmi("X1", "X4", "X2")
-#import IPython; IPython.embed(); exit(1)
+
+if __name__ == "__main__":
+    # Expt 1
+    n = 200
+    l1 = []
+    l2 = []
+    for i in range(n):
+        g = Graph()
+        g.add_variable("L1", None)
+        g.add_variable("X1", "L1")
+        g.add_variable("X2", "L1")
+        g.add_variable("X3", "L1")
+        g.add_variable("X4", "L1")
+        mi1 = math.log(g.calc_mi("X1", "X2")) + math.log(g.calc_mi("X3", "X4"))
+        l1.append(mi1)
+        mi2 = math.log(g.calc_mi("X2", "X3")) + math.log(g.calc_mi("X1", "X4"))
+        l2.append(mi2)
+    print(np.corrcoef(l1, l2))
+    df = pd.DataFrame({"mi1": l1, "mi2": l2})
+    plt.rcParams.update({'font.size': 15})
+    df.plot.scatter(x="mi1", y="mi2", alpha=0.6, figsize=(12,8))
+    plt.savefig("plots/mutual_info_plot.png")
+
 

@@ -123,13 +123,15 @@ if __name__ == "__main__":
     actors = Actors(credits)
     actors.construct_actors(max_actors=5)
     actors.sort_actors()
-    actors.threshold_actors(num_actors=25)
+    actors.threshold_actors(num_actors=50)
 
     
     # Construct movies
     m = Movies(movies, credits, actors)
     m.construct_movies(min_actors=2)
     df = m.return_movies_df()
+    df = df[df["revenue"] > 0]
+    df = df.drop("title", axis=1)
     print(df)
     print(df.columns)
     df.to_csv("data/cleaned.csv", index=False)

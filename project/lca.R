@@ -39,7 +39,7 @@ plot_dendrogram <- function(cols) {
 
 data = fread("data/cleaned.csv")
 data = data[revenue > 0]
-data = data %>% select(-all_of(c("title", "revenue")))
+data = data %>% select(-all_of(c("revenue")))
 data = data + 1
 cast_cols = grep("^a", names(data), value=TRUE)
 genre_cols = c("gAction", "gComedy", "gDrama", "gFamily", "gCrime")
