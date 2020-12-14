@@ -5,6 +5,7 @@ from itertools import product
 import math
 from copy import deepcopy
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 def dicttostr(d):
     l = []
@@ -101,7 +102,6 @@ class Graph:
         if isinstance(parents, str):
             parents = [parents]
         var = Variable(name, parents)
-        #print(f"Adding {name}.")
 
         if not parents is None:
             valid_parents = len(set(parents)-set(self.vars.keys())) == 0
@@ -120,6 +120,7 @@ class Graph:
         assert math.isclose(sum(self.jpd["p"]), 1), "JPD does not sum to 1"
         return
 
+
     def calc_mi(self, X: str, Y: str, normalize=False):
         mi = 0
         for x in [0, 1]:
@@ -134,11 +135,14 @@ class Graph:
             for x in [0, 1]:
                 Px = lookup(self.jpd, {X: x})
                 Hx += -Px * math.log(Px)
-                #print(f"Entropy is {Hx}.")
             mi = mi / Hx
-        print(f"MI({X};{Y}) = {mi:.10f}")
-        return mi
-    
+
+        #if mi < 0:
+        #    mi = 1e-20
+        #print(f"MI({X};{Y}) = {mi:.10f}")
+        mi += 1e-20
+        return mi    
+
     def calc_condmi(self, X: str, Y: str, Z: str, normalize=False):
         mi = 0
         combn = [[0,1]] * 3
@@ -160,6 +164,22 @@ class Graph:
         print(f"MI({X};{Y}|{Z}) = {mi:.10f}")
         return mi
 
+    def calc_joint(self, d):
+        Pxy = lookup(self.jpd, d)
+        return Pxy
+
+    def calc_entropy(self, X: str):
+        entropy = 0
+        for x in [0,1]:
+            Px = lookup(self.jpd, {X: x})
+            entropy += Px * math.log(1/Px)
+        return entropy
+
+    def calc_tetrad(self, X1, X2, X3, X4):
+        tetrad =  math.log(self.calc_mi(X1, X2))
+        tetrad += math.log(self.calc_mi(X3, X4))
+        return tetrad
+
 
 class Variable:
     def __init__(self, name, parents=None):
@@ -167,28 +187,117 @@ class Variable:
         self.parents = parents
 
 
-
-
-if __name__ == "__main__":
+def run_expt1a():
     # Expt 1
-    n = 200
+    n = 100
     l1 = []
     l2 = []
-    for i in range(n):
+    for i in tqdm(range(n)):
         g = Graph()
         g.add_variable("L1", None)
         g.add_variable("X1", "L1")
         g.add_variable("X2", "L1")
         g.add_variable("X3", "L1")
         g.add_variable("X4", "L1")
-        mi1 = math.log(g.calc_mi("X1", "X2")) + math.log(g.calc_mi("X3", "X4"))
-        l1.append(mi1)
-        mi2 = math.log(g.calc_mi("X2", "X3")) + math.log(g.calc_mi("X1", "X4"))
-        l2.append(mi2)
-    print(np.corrcoef(l1, l2))
-    df = pd.DataFrame({"mi1": l1, "mi2": l2})
-    plt.rcParams.update({'font.size': 15})
-    df.plot.scatter(x="mi1", y="mi2", alpha=0.6, figsize=(12,8))
-    plt.savefig("plots/mutual_info_plot.png")
+        l1.append(g.calc_tetrad("X1", "X2", "X3", "X4"))
+        l2.append(g.calc_tetrad("X1", "X4", "X2", "X3"))
 
+    print(np.corrcoef(l1, l2))
+    df = pd.DataFrame({"A": l1, "B": l2})
+    plt.rcParams.update({'font.size': 15})
+    df.plot.scatter(x="A", y="B", alpha=0.6, figsize=(12,8))
+    plt.savefig("plots/expt1a.png")
+
+
+def run_expt1b():
+    n = 100
+    l1 = []
+    l2 = []
+    for i in tqdm(range(n)):
+        g = Graph()
+        g.add_variable("L1", None)
+        g.add_variable("L2", None)
+        g.add_variable("X1", "L1")
+        g.add_variable("X2", "L1")
+        g.add_variable("X3", "L2")
+        g.add_variable("X4", "L2")
+        l1.append(g.calc_tetrad("X1", "X2", "X3", "X4"))
+        l2.append(g.calc_tetrad("X1", "X4", "X2", "X3"))
+
+    print(np.corrcoef(l1, l2))
+    df = pd.DataFrame({"A": l1, "B": l2})
+    plt.rcParams.update({'font.size': 15})
+    df.plot.scatter(x="A", y="B", alpha=0.6, figsize=(12,8))
+    plt.savefig("plots/expt1b.png")
+
+
+def run_expt1c():
+    n = 100
+    l1 = []
+    l2 = []
+    for i in tqdm(range(n)):
+        g = Graph()
+        g.add_variable("L1", None)
+        g.add_variable("L2", "L1")
+        g.add_variable("X1", "L1")
+        g.add_variable("X2", "L1")
+        g.add_variable("X3", "L2")
+        g.add_variable("X4", "L2")
+        l1.append(g.calc_tetrad("X1", "X2", "X3", "X4"))
+        l2.append(g.calc_tetrad("X1", "X4", "X2", "X3"))
+
+    print(np.corrcoef(l1, l2))
+    df = pd.DataFrame({"A": l1, "B": l2})
+    plt.rcParams.update({'font.size': 15})
+    df.plot.scatter(x="A", y="B", alpha=0.6, figsize=(12,8))
+    plt.savefig("plots/expt1c.png")
+
+def run_expt2():
+    n = 100
+    l1 = []
+    l2 = []
+    for i in tqdm(range(n)):
+        g = Graph()
+        g.add_variable("L1", None)
+        g.add_variable("L2", None)
+        g.add_variable("X1", "L1")
+        g.add_variable("X2", "L1")
+        g.add_variable("X3", "L2")
+        g.add_variable("X4", "L2")
+        A = g.calc_joint({"X1":0, "X2":0}) * g.calc_joint({"X3":0, "X4":0})
+        B = g.calc_joint({"X1":0, "X4":0}) * g.calc_joint({"X2":0, "X3":0})
+        l1.append(A)
+        l2.append(B)
+    print(np.corrcoef(l1, l2))
+    df = pd.DataFrame({"A": l1, "B": l2})
+    plt.rcParams.update({'font.size': 15})
+    df.plot.scatter(x="A", y="B", alpha=0.6, figsize=(12,8))
+    plt.savefig("plots/expt2.png")
+
+
+# Is I(X1;L1) * I(X2;L1) * H(L1) ~= I(X1;X2)?
+# Corr = 0.990
+def run_expt3():
+    n = 200
+    l1 = []
+    l2 = []
+    for i in tqdm(range(n)):
+        g = Graph()
+        g.add_variable("L1", None)
+        g.add_variable("X1", "L1")
+        g.add_variable("X2", "L1")
+        A = math.log(g.calc_mi("X1", "X2"))
+        B = math.log(g.calc_entropy("L1"))
+        B += math.log(g.calc_mi("L1", "X1"))
+        B += math.log(g.calc_mi("L1", "X2"))
+        l1.append(A)
+        l2.append(B)
+    print(np.corrcoef(l1, l2))
+    df = pd.DataFrame({"A": l1, "B": l2})
+    plt.rcParams.update({'font.size': 15})
+    df.plot.scatter(x="A", y="B", alpha=0.6, figsize=(12,8))
+    plt.savefig("plots/expt3.png")
+
+if __name__ == "__main__":
+    run_expt3()
 
