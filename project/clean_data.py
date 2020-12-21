@@ -117,14 +117,13 @@ if __name__ == "__main__":
     movies_f = "data/tmdb_5000_movies.csv"
     credits = pd.read_csv(credits_f)
     movies = pd.read_csv(movies_f)
-    #import IPython;IPython.embed();exit(1)
+    print(movies.shape[0])
     
     # Construct actors
     actors = Actors(credits)
     actors.construct_actors(max_actors=5)
     actors.sort_actors()
-    actors.threshold_actors(num_actors=50)
-
+    actors.threshold_actors(num_actors=25)
     
     # Construct movies
     m = Movies(movies, credits, actors)
@@ -132,7 +131,7 @@ if __name__ == "__main__":
     df = m.return_movies_df()
     df = df[df["revenue"] > 0]
     df = df.drop("title", axis=1)
-    print(df)
+    print(df.shape[0])
     print(df.columns)
     df.to_csv("data/cleaned.csv", index=False)
 
