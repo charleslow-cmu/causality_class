@@ -5,6 +5,7 @@ from itertools import product
 import math
 from copy import deepcopy
 import matplotlib.pyplot as plt
+from typing import List
 plt.rcParams.update({'figure.autolayout': True})
 plt.rcParams.update({'font.size': 14})
 plt.rcParams.update({'xtick.labelsize': 12})
@@ -16,6 +17,10 @@ from scipy.stats import norm
 from scipy.stats.stats import pearsonr
 import sys
 
+# Return list of items in first that are not in second
+def listdiff(first, second):
+    second = set(second)
+    return [item for item in first if item not in second]
 
 def make_keys(k=1):
     return [str(i) for i in range(k+1)]
@@ -125,33 +130,87 @@ def sort_columns(df):
 
 class Graph:
     def __init__(self):
-        self.vars = set()
+        self.xvars = []
+        self.lvars = []
         self.jpd = None
 
     # k is number of categories for this variable
-    def add_variable(self, name, parents=None, k=1):
+    def add_variable(self, name, parents=None, k=2):
         if isinstance(parents, str):
             parents = [parents]
 
+        # Sanity checks
         if not parents is None:
-            valid_parents = len(set(parents)-self.vars) == 0
+            valid_parents = len(set(parents)-set(self.lvars)) == 0
             assert valid_parents, "Parents not found in graph!"
+        elif "X" in name:
+            assert False, "X variable must have a parent!"
 
-        self.vars.add(name)
+        if "X" in name:
+            self.xvars.append(name)
+        else:
+            self.lvars.append(name)
 
         # Adding first variable
-        if len(self.vars) == 1:
-            d = {name: make_keys(k), "p": make_column(k=k)}
+        if len(self.lvars) + len(self.xvars) == 1:
+            d = {name: make_keys(k-1), "p": make_column(k=k-1)}
             self.jpd = pd.DataFrame(d)
             return
 
         # Adding subsequent vars
-        self.jpd = make_jpd(self.jpd, parents, name, k=k)
+        self.jpd = make_jpd(self.jpd, parents, name, k=k-1)
         assert math.isclose(sum(self.jpd["p"]), 1), "JPD does not sum to 1"
-        return
 
+    # Get Marginal Probability P(X)
+    def get_marginal(self, X: str):
+        Dx = self.jpd.groupby(X)["p"].sum().reset_index()
+        return Dx
 
-    def calc_mi(self, X: str, Y: str):
+    # Get Conditional Probability P(X|Ys)
+    def get_conditional(self, X: str, Ys: List[str]):
+        if isinstance(Ys, str):
+            Ys = [Ys]
+        Vs = Ys + [X]
+        Jxy = self.jpd.groupby(Vs)["p"].sum().reset_index()
+        Jxy["p"] = Jxy.groupby(Ys)["p"].apply(lambda x: x/x.sum())
+        Jxy = Jxy.pivot(index=Ys, columns=X, values="p")
+        return Jxy
+
+    # Get Joint Probability P(X,Y)
+    def get_joint(self, X: str, Y: str):
+        Vs = [X, Y]
+        Jxy = self.jpd.groupby(Vs)["p"].sum().reset_index()
+        Jxy = Jxy.pivot(index=X, columns=Y, values="p")
+        return Jxy
+
+    def calc_infdist(self, X: str, Y: str):
+        Jxy = self.jpd.groupby([X, Y])["p"].sum().reset_index()
+        Jxy = Jxy.pivot(index=X, columns=Y, values="p")
+        Jxy = np.array(Jxy)
+        dxy = abs(np.linalg.det(Jxy))
+        dx = Jxy.sum(axis=1).prod()
+        dy = Jxy.sum(axis=0).prod()
+        dist = -math.log(dxy) + 0.5*(math.log(dx) + math.log(dy))
+        #print(f"Dist {X} to {Y} is {dist:.8f}")
+        return dist
+
+    def calc_infdist2(self, X: str, Y: str):
+        Jxy = self.jpd.groupby([X, Y])["p"].sum().reset_index()
+        Jxy = Jxy.pivot(index=X, columns=Y, values="p")
+        Jxy = np.array(Jxy)
+        u, d, v = np.linalg.svd(Jxy)
+        tol = d.max() * max(Jxy.shape) * sys.float_info.epsilon
+        d = d[d > tol]
+        #print(f"Singular P_{X}{Y}: {d}")
+        dx = Jxy.sum(axis=1).prod()
+        dy = Jxy.sum(axis=0).prod()
+        dist = -np.sum(np.log(d)) + 0.5*(math.log(dx) + math.log(dy))
+        return dist
+
+    def calc_phi(self, Xi:str, Xj:str, Xk:str):
+        return self.calc_infdist(Xi, Xk) - self.calc_infdist(Xj, Xk)
+
+    def calc_mi(self, X: str, Y: str, log=False, normalize=False):
         mi = 0
         xvals = pd.unique(self.jpd[X])
         yvals = pd.unique(self.jpd[Y])
@@ -161,10 +220,40 @@ class Graph:
                 Px = lookup(self.jpd, {X: x})
                 Py = lookup(self.jpd, {Y: y})
                 temp = math.log(Pxy) - math.log(Px) - math.log(Py)
-                mi += Pxy * temp
+                mi += (Pxy * temp)
+
+        if normalize:
+            Hx = 0
+            for x in xvals:
+                Px = lookup(self.jpd, {X:x})
+                Hx += (-Px * math.log(Px))
+            Hy = 0
+            for y in yvals:
+                Py = lookup(self.jpd, {Y:y})
+                Hy += (-Py * math.log(Py))
+            mi /= (Hx * Hy)
+
         if mi <= 0:
             mi = sys.float_info.min
+        if log:
+            mi = math.log(mi)
         return mi    
+
+
+    def calc_jentropy(self, X: str, Y: str, log=False):
+        ent = 0
+        xvals = pd.unique(self.jpd[X])
+        yvals = pd.unique(self.jpd[Y])
+        for x in xvals:
+            for y in yvals:
+                Pxy = lookup(self.jpd, {X: x, Y: y})
+                ent += (-Pxy * math.log(Pxy))
+        if ent <= 0:
+            ent = sys.float_info.min
+        if log:
+            ent = math.log(ent)
+        return ent
+
 
     def calc_condmi(self, X: str, Y: str, Z: str, normalize=False):
         mi = 0
@@ -178,21 +267,12 @@ class Graph:
         print(f"MI({X};{Y}|{Z}) = {mi:.10f}")
         return mi
 
-    def calc_joint(self, d):
-        Pxy = lookup(self.jpd, d)
-        return Pxy
-
     def calc_entropy(self, X: str):
         entropy = 0
         for x in [0,1]:
             Px = lookup(self.jpd, {X: x})
             entropy += Px * math.log(1/Px)
         return entropy
-
-    def calc_tetrad(self, X1, X2, X3, X4):
-        tetrad =  math.log(self.calc_mi(X1, X2))
-        tetrad += math.log(self.calc_mi(X3, X4))
-        return tetrad
 
     def generate_data(self, varlist, n):
         df_subset = self.jpd.sample(n=n, weights="p", replace=True)
@@ -216,197 +296,43 @@ def mutual_info(df, X:str, Y:str):
     return mi    
 
 
-def tetrad_test(df, X1:str, X2:str, X3:str, X4:str, trials=1000):
-    bootstrap_prob = 1.0
-    lstats = []
-    for i in range(trials):
-        s= df.sample(frac=bootstrap_prob, replace=True)
-        A = math.log(mutual_info(s, X1, X2)) + math.log(mutual_info(s, X3, X4))
-        B = math.log(mutual_info(s, X1, X4)) + math.log(mutual_info(s, X2, X3))
-        lstats.append(abs(A-B))
-    sns.distplot(lstats)
-    lstats = pd.Series(lstats)
-    test_stat = np.mean(lstats)
-    std = np.std(lstats)
-    pval = 2*(1-norm.cdf(abs(test_stat), loc=0, scale=std))
-    return pval
-
-
-def run_expt1(n=100, ldim=1):
-
-    def plot_graph(l1, l2, l3, l4, r1, r2, filename):
-        print(r1); print(r2)
-        df = pd.DataFrame({"A": l1, "B": l2, "C": l3, "D": l4})
-        fig, (ax1, ax2) = plt.subplots(nrows=2)
-        df.plot.scatter(x="A", y="B", alpha=0.6, figsize=(6,8), ax=ax1)
-        ax1.text(0.1, 0.8, f"Pearson R={r1:.5f}", transform=ax1.transAxes, family='monospace')
-        df.plot.scatter(x="C", y="D", alpha=0.6, ax=ax2)
-        ax2.text(0.1, 0.8, f"Pearson R={r2:.5f}", transform=ax2.transAxes, family='monospace')
-        fig.savefig(f"plots/{filename}.png")
-
-    # Expt 1a
-    l1 = []
-    l2 = []
-    l3 = []
-    l4 = []
-    for i in tqdm(range(n)):
-        g = Graph()
-        g.add_variable("L1", None, k=ldim)
-        g.add_variable("L2", None, k=ldim)
-        g.add_variable("X1", "L1")
-        g.add_variable("X2", "L1")
-        g.add_variable("X3", "L1")
-        g.add_variable("X4", "L1")
-        g.add_variable("X5", "L2")
-        g.add_variable("X6", "L2")
-        l1.append(g.calc_tetrad("X1", "X2", "X3", "X4"))
-        l2.append(g.calc_tetrad("X1", "X4", "X2", "X3"))
-        l3.append(g.calc_tetrad("X1", "X2", "X5", "X6"))
-        l4.append(g.calc_tetrad("X1", "X6", "X2", "X5"))
-
-    r1 = pearsonr(l1, l2)[0]
-    r2 = pearsonr(l3, l4)[0]
-    plot_graph(l1, l2, l3, l4, r1, r2, "expt1a")
-
-    # Expt 1b
-    l1 = []
-    l2 = []
-    l3 = []
-    l4 = []
-    for i in tqdm(range(n)):
-        g = Graph()
-        g.add_variable("L1", None, k=ldim)
-        g.add_variable("L2", "L1", k=ldim)
-        g.add_variable("X1", "L1")
-        g.add_variable("X2", "L1")
-        g.add_variable("X3", "L1")
-        g.add_variable("X4", "L1")
-        g.add_variable("X5", "L2")
-        g.add_variable("X6", "L2")
-        l1.append(g.calc_tetrad("X1", "X2", "X3", "X4"))
-        l2.append(g.calc_tetrad("X1", "X4", "X2", "X3"))
-        l3.append(g.calc_tetrad("X1", "X2", "X5", "X6"))
-        l4.append(g.calc_tetrad("X1", "X6", "X2", "X5"))
-
-    r1 = pearsonr(l1, l2)[0]
-    r2 = pearsonr(l3, l4)[0]
-    plot_graph(l1, l2, l3, l4, r1, r2, "expt1b")
-
-    # Expt 1c
-    l1 = []
-    l2 = []
-    l3 = []
-    l4 = []
-    for i in tqdm(range(n)):
-        g = Graph()
-        g.add_variable("L2", None, k=ldim)
-        g.add_variable("L1", "L2", k=ldim)
-        g.add_variable("X1", "L1")
-        g.add_variable("X2", "L1")
-        g.add_variable("X3", "L1")
-        g.add_variable("X4", "L1")
-        g.add_variable("X5", "L2")
-        g.add_variable("X6", "L2")
-        l1.append(g.calc_tetrad("X1", "X2", "X3", "X4"))
-        l2.append(g.calc_tetrad("X1", "X4", "X2", "X3"))
-        l3.append(g.calc_tetrad("X1", "X2", "X5", "X6"))
-        l4.append(g.calc_tetrad("X1", "X6", "X2", "X5"))
-
-    r1 = pearsonr(l1, l2)[0]
-    r2 = pearsonr(l3, l4)[0]
-    plot_graph(l1, l2, l3, l4, r1, r2, "expt1c")
-
-
-def run_expt2(n, nlist, trials):
-    n1 = []
-    n2 = []
-    for n_data in nlist:
-        l1 = []
-        l2 = []
-        for i in tqdm(range(n)):
-            g = Graph()
-            g.add_variable("L1", None)
-            g.add_variable("L2", None)
-            g.add_variable("X1", "L1")
-            g.add_variable("X2", "L1")
-            g.add_variable("X3", "L1")
-            g.add_variable("X4", "L1")
-            g.add_variable("X5", "L2")
-            g.add_variable("X6", "L2")
-            df = g.generate_data(["L1", "X1", "X2", "X3", "X4", "X5", "X6"], n_data)
-            test1 = tetrad_test(df, "X1", "X2", "X3", "X4", trials=trials)
-            test2 = tetrad_test(df, "X1", "X2", "X5", "X6", trials=trials)
-            l1.append(test1)
-            l2.append(test2)
-        l1 = pd.Series(l1)
-        l2 = pd.Series(l2)
-        n1.append((l1 > 0.05).sum()/n)
-        n2.append((l2 < 0.05).sum()/n)
-    dfA = pd.DataFrame({"n": nlist, "test1": n1, "test2": n2})
-
-    n1 = []
-    n2 = []
-    for n_data in nlist:
-        l1 = []
-        l2 = []
-        for i in tqdm(range(n)):
-            g = Graph()
-            g.add_variable("L1", None)
-            g.add_variable("L2", "L1")
-            g.add_variable("X1", "L1")
-            g.add_variable("X2", "L1")
-            g.add_variable("X3", "L1")
-            g.add_variable("X4", "L1")
-            g.add_variable("X5", "L2")
-            g.add_variable("X6", "L2")
-            df = g.generate_data(["L1", "X1", "X2", "X3", "X4", "X5", "X6"], n_data)
-            test1 = tetrad_test(df, "X1", "X2", "X3", "X4", trials=trials)
-            test2 = tetrad_test(df, "X1", "X2", "X5", "X6", trials=trials)
-            l1.append(test1)
-            l2.append(test2)
-        l1 = pd.Series(l1)
-        l2 = pd.Series(l2)
-        n1.append((l1 > 0.05).sum()/n)
-        n2.append((l2 < 0.05).sum()/n)
-    dfB = pd.DataFrame({"n": nlist, "test1": n1, "test2": n2})
-
-    n1 = []
-    n2 = []
-    for n_data in nlist:
-        l1 = []
-        l2 = []
-        for i in tqdm(range(n)):
-            g = Graph()
-            g.add_variable("L2", None)
-            g.add_variable("L1", "L2")
-            g.add_variable("X1", "L1")
-            g.add_variable("X2", "L1")
-            g.add_variable("X3", "L1")
-            g.add_variable("X4", "L1")
-            g.add_variable("X5", "L2")
-            g.add_variable("X6", "L2")
-            df = g.generate_data(["L1", "X1", "X2", "X3", "X4", "X5", "X6"], n_data)
-            test1 = tetrad_test(df, "X1", "X2", "X3", "X4", trials=trials)
-            test2 = tetrad_test(df, "X1", "X2", "X5", "X6", trials=trials)
-            l1.append(test1)
-            l2.append(test2)
-        l1 = pd.Series(l1)
-        l2 = pd.Series(l2)
-        n1.append((l1 > 0.05).sum()/n)
-        n2.append((l2 < 0.05).sum()/n)
-    dfC = pd.DataFrame({"n": nlist, "test1": n1, "test2": n2})
-    return dfA, dfB, dfC
-
-def plot_expt2_data(df, filename):
-    df = df.melt(id_vars="n", value_vars=["test1", "test2"])
-    ax = df.pivot("n", "variable", "value").plot(kind="bar")
-    ax.set_ylim(0, 1)
-    plt.savefig(f"plots/{filename}.png")
 
 
 if __name__ == "__main__":
-    A, B, C = run_expt2(n=100, nlist=[10000], trials=1000)
-    plot_expt2_data(A, "expt2a")
-    plot_expt2_data(B, "expt2b")
-    plot_expt2_data(C, "expt2c")
+
+    correct = 0
+    n = 10
+    for _ in range(n):
+        g = Graph()
+        g.add_variable("L1", None, 2)
+        g.add_variable("X1", "L1", 15)
+        g.add_variable("X2", "L1", 15)
+
+        A = g.calc_infdist2("X1", "L1")
+        B = g.calc_infdist2("X2", "L1")
+        C = g.calc_infdist2("X1", "X2")
+        correct += math.isclose(A+B, C, abs_tol=1e-6)
+        print(f"{A+B},{C}")
+        J_X1X2 = g.get_joint("X1", "X2")
+        print(np.linalg.matrix_rank(J_X1X2))
+    print(f"Correct: {correct}/{n}")
+
+    #k=2
+    #g = Graph()
+    #g.add_variable("L1", None, k=k)
+    #g.add_variable("L2", "L1", k=k)
+    #g.add_variable("L3", ["L1", "L2"], k=k)
+    #g.add_variable("L4", "L3", k=k)
+    #g.add_variable("X1", "L1", k=k)
+    #g.add_variable("X2", "L1", k=k)
+    #g.add_variable("X3", "L2", k=k)
+    #g.add_variable("X4", "L2", k=k)
+    #g.add_variable("X5", ["L1", "L2"], k=k)
+    #g.add_variable("X6", ["L1", "L2"], k=k)
+    #g.add_variable("X7", "L3", k=k)
+    #g.add_variable("X8", "L3", k=k)
+    #g.add_variable("X9", "L4", k=k)
+    #g.add_variable("X10", "L4", k=k)
+
+
 
