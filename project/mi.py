@@ -1,7 +1,7 @@
 import random
 import pandas as pd
 import numpy as np
-from itertools import product
+from itertools import product, combinations
 import math
 from copy import deepcopy
 import matplotlib.pyplot as plt
@@ -13,8 +13,6 @@ plt.rcParams.update({'ytick.labelsize': 12})
 plt.rcParams.update({'axes.labelsize': 18})
 import seaborn as sns
 from tqdm import tqdm
-from scipy.stats import norm
-from scipy.stats.stats import pearsonr
 import sys
 
 # Return list of items in first that are not in second
@@ -141,10 +139,9 @@ class Graph:
 
         # Sanity checks
         if not parents is None:
-            valid_parents = len(set(parents)-set(self.lvars)) == 0
+            variables = set(self.lvars) | set(self.xvars)
+            valid_parents = len(set(parents)-variables) == 0
             assert valid_parents, "Parents not found in graph!"
-        elif "X" in name:
-            assert False, "X variable must have a parent!"
 
         if "X" in name:
             self.xvars.append(name)
@@ -177,26 +174,46 @@ class Graph:
         return Jxy
 
     # Get Joint Probability P(X,Y)
-    def get_joint(self, X: str, Y: str):
-        Vs = [X, Y]
+    def get_joint(self, Xs: List[str], Ys: List[str]):
+        if isinstance(Xs, str):
+            Xs = [Xs]
+        if isinstance(Ys, str):
+            Ys = [Ys]
+        Vs = Xs + Ys
         Jxy = self.jpd.groupby(Vs)["p"].sum().reset_index()
-        Jxy = Jxy.pivot(index=X, columns=Y, values="p")
+        Jxy = Jxy.pivot(index=Xs, columns=Ys, values="p")
         return Jxy
 
-    def calc_infdist(self, X: str, Y: str):
-        Jxy = self.jpd.groupby([X, Y])["p"].sum().reset_index()
-        Jxy = Jxy.pivot(index=X, columns=Y, values="p")
+    def calc_infdist(self, Xs: List[str], Ys: List[str]):
+        if isinstance(Xs, str):
+            Xs = [Xs]
+        if isinstance(Ys, str):
+            Ys = [Ys]
+
+        Jxy = self.jpd.groupby(Xs+Ys)["p"].sum().reset_index()
+        Jxy = Jxy.pivot(index=Xs, columns=Ys, values="p")
         Jxy = np.array(Jxy)
         dxy = abs(np.linalg.det(Jxy))
         dx = Jxy.sum(axis=1).prod()
         dy = Jxy.sum(axis=0).prod()
+
+        if math.isclose(dxy, 0, abs_tol=1e-16):
+            return None
+        
         dist = -math.log(dxy) + 0.5*(math.log(dx) + math.log(dy))
-        #print(f"Dist {X} to {Y} is {dist:.8f}")
         return dist
 
-    def calc_infdist2(self, X: str, Y: str):
-        Jxy = self.jpd.groupby([X, Y])["p"].sum().reset_index()
-        Jxy = Jxy.pivot(index=X, columns=Y, values="p")
+    # Generalized Information Distance
+    # If a list of variables is provided, these variables are "merged"
+    # to form a new one.
+    def calc_infdist2(self, Xs: List[str], Ys: List[str]):
+        if isinstance(Xs, str):
+            Xs = [Xs]
+        if isinstance(Ys, str):
+            Ys = [Ys]
+        Vs = Xs + Ys
+        Jxy = self.jpd.groupby(Vs)["p"].sum().reset_index()
+        Jxy = Jxy.pivot(index=Xs, columns=Ys, values="p")
         Jxy = np.array(Jxy)
         u, d, v = np.linalg.svd(Jxy)
         tol = d.max() * max(Jxy.shape) * sys.float_info.epsilon
@@ -207,132 +224,163 @@ class Graph:
         dist = -np.sum(np.log(d)) + 0.5*(math.log(dx) + math.log(dy))
         return dist
 
-    def calc_phi(self, Xi:str, Xj:str, Xk:str):
-        return self.calc_infdist(Xi, Xk) - self.calc_infdist(Xj, Xk)
+    def calc_phi(self, Xi:List[str], Xj:List[str], Xk:List[str]):
+        # Check rank instead?
+        A = self.calc_infdist(Xi, Xk)
+        B = self.calc_infdist(Xj, Xk)
+        if A == None or B == None:
+            return None
+        return A-B
 
-    def calc_mi(self, X: str, Y: str, log=False, normalize=False):
-        mi = 0
-        xvals = pd.unique(self.jpd[X])
-        yvals = pd.unique(self.jpd[Y])
-        for x in xvals:
-            for y in yvals:
-                Pxy = lookup(self.jpd, {X: x, Y: y})
-                Px = lookup(self.jpd, {X: x})
-                Py = lookup(self.jpd, {Y: y})
-                temp = math.log(Pxy) - math.log(Px) - math.log(Py)
-                mi += (Pxy * temp)
-
-        if normalize:
-            Hx = 0
-            for x in xvals:
-                Px = lookup(self.jpd, {X:x})
-                Hx += (-Px * math.log(Px))
-            Hy = 0
-            for y in yvals:
-                Py = lookup(self.jpd, {Y:y})
-                Hy += (-Py * math.log(Py))
-            mi /= (Hx * Hy)
-
-        if mi <= 0:
-            mi = sys.float_info.min
-        if log:
-            mi = math.log(mi)
-        return mi    
-
-
-    def calc_jentropy(self, X: str, Y: str, log=False):
-        ent = 0
-        xvals = pd.unique(self.jpd[X])
-        yvals = pd.unique(self.jpd[Y])
-        for x in xvals:
-            for y in yvals:
-                Pxy = lookup(self.jpd, {X: x, Y: y})
-                ent += (-Pxy * math.log(Pxy))
-        if ent <= 0:
-            ent = sys.float_info.min
-        if log:
-            ent = math.log(ent)
-        return ent
-
-
-    def calc_condmi(self, X: str, Y: str, Z: str, normalize=False):
-        mi = 0
-        combn = [[0,1]] * 3
-        for x,y,z in product(*combn):
-            Pxyz = lookup(self.jpd, {X: x, Y: y, Z: z})
-            Pz = lookup(self.jpd, {Z: z})
-            Pxz = lookup(self.jpd, {X: x, Z: z})
-            Pyz = lookup(self.jpd, {Y: y, Z: z})
-            mi += Pxyz * math.log((Pxyz*Pz) / (Pxz * Pyz))
-        print(f"MI({X};{Y}|{Z}) = {mi:.10f}")
-        return mi
-
-    def calc_entropy(self, X: str):
-        entropy = 0
-        for x in [0,1]:
-            Px = lookup(self.jpd, {X: x})
-            entropy += Px * math.log(1/Px)
-        return entropy
+    def calc_phi_all(self, Xi:str, Xj:str):
+        for X in self.xvars:
+            if X == Xi or X == Xj:
+                pass
+            else:
+                print(f"{X}: {self.calc_phi(Xi, Xj, X)}")
 
     def generate_data(self, varlist, n):
         df_subset = self.jpd.sample(n=n, weights="p", replace=True)
         df_subset = df_subset.loc[:, varlist]
         return df_subset
 
-def mutual_info(df, X:str, Y:str):
-    xvals = pd.unique(df[X])
-    yvals = pd.unique(df[Y])
-    n = df.shape[0]
-    mi = 0
-    for x in xvals:
-        for y in yvals:
-            Pxy = (df.loc[(df[X] == x) & (df[Y] == y)].shape[0]+1) / (n+1)
-            Px = (df.loc[(df[X] == x)].shape[0]+1) / (n+1)
-            Py = (df.loc[(df[Y] == y)].shape[0]+1) / (n+1)
-            temp = math.log(Pxy) - math.log(Px) - math.log(Py)
-            mi += Pxy * temp
-    if mi <= 0:
-        mi = sys.float_info.min
-    return mi    
+    def rank_test(self, A:List[str], B:List[str]):
+        Jab = self.jpd.groupby(A+B)["p"].sum().reset_index()
+        Jab = Jab.pivot(index=A, columns=B, values="p")
+        Jab = np.array(Jab)
+        return math.log2(np.linalg.matrix_rank(Jab))
+
+    def scenarioA(self): 
+        self.add_variable("L3", None)
+        self.add_variable("L4", None)
+        self.add_variable("X6", "L3")
+        self.add_variable("X7", "L4")
+        self.add_variable("L1", ["L3", "L4"])
+        self.add_variable("L2", ["L3", "L4"])
+        self.add_variable("X1", "L1")
+        self.add_variable("X2", "L1")
+        self.add_variable("X5", "L1")
+        self.add_variable("X3", "L2")
+        self.add_variable("X4", ["L1", "L2"])
 
 
+    def scenarioB(self): 
+        self.add_variable("L1", None)
+        self.add_variable("L2", None)
+        self.add_variable("L3", "L1")
+        self.add_variable("L4", "L4")
+        self.add_variable("X1", ["L1", "L2"])
+        self.add_variable("X2", ["L1", "L2"])
+        self.add_variable("X3", ["L1", "L2"])
+        self.add_variable("X4", ["L3", "L4"])
+        self.add_variable("X5", ["L3", "L4"])
+        self.add_variable("X6", ["L3", "L4"])
+
+
+    def find_pure_clusters(self):
+        l = 1
+        V = set(self.xvars)
+        S = {}
+        k = 2
+        while k<3:
+            temp_S = {}
+            print(f"{'='*10} k is {k} {'='*10}")
+            for test_vars in combinations(V, k*2):
+                A = list(test_vars[:k])
+                B = list(test_vars[k:])
+                #if check_subset(A, S) or check_subset(B, S):
+                #    continue
+
+                # Check if remaining_vars is a valid reference set
+                remaining_vars = list(V - set(test_vars))
+                rankCheck = self.rank_test(A+B, remaining_vars)
+                print(f"{lprint(A+B)} vs {lprint(remaining_vars)}: {rankCheck}")
+                if rankCheck <= k:
+                    continue
+                
+                phi_list = []
+                for C in combinations(remaining_vars, k):
+                    A, B, C = list(A), list(B), list(C)
+                    phi_list.append(g.calc_phi(A, B, C))
+                    #if set(A+B) == set(["X4", "X5", "X3", "X6"]):
+                    #    print(f"AC: {lprint(A+C)}| {g.calc_infdist(A, C)}")
+                    #    print(f"BC: {lprint(B+C)}| {g.calc_infdist(B, C)}")
+                    #    print(f"A:{A}, B:{B}, C:{C} | {phi_list[-1]}")
+
+                if check_list_close(phi_list):
+                    print(f"Found cluster: {A+B}")
+                    print(phi_list)
+                    L = f"L{l}"
+                    temp_S[L] = A+B
+                    l+=1
+
+            S = merge_clusters(temp_S)
+            #for k, vs in S.items():
+            #    V = V - set(vs)
+            #    V.add(k)
+            print(S)
+            print(V)
+            k+=1
+
+def lprint(l):
+    return ",".join(l)
+
+# Check if a list of phi values are all close
+def check_list_close(l):
+    if len(l) == 0:
+        return False
+
+    first_element = l[0]
+    for phi in l:
+        if phi is None:
+            return False
+        if not math.isclose(first_element, phi):
+            return False
+    return True
+
+
+# Given a dictionary of clusters, merge overlapping clusters
+# of the same cardinality.
+def merge_clusters(S):
+    inv_list = {}
+    for k, vs in S.items():
+        for v in vs:
+            inv_list[v] = inv_list.get(v, []) + [k]
+
+    groups = []
+    for vs in inv_list.values():
+        if len(vs) > 1:
+            if len(groups) == 0:
+                groups.append(set(vs))
+
+            for i, group in enumerate(groups):
+                if len(group.intersection(vs)) > 0:
+                    groups[i].update(vs)
+                else:
+                    groups.append(set(vs))
+
+    for group in groups:
+        new_key = min(group)
+        new_vals = set()
+        for l in group:
+            new_vals.update(S.pop(l))
+        S[new_key] = list(new_vals)
+
+    return S
+
+# Checks if a set of values is a subset of any clusters in S
+def check_subset(A, S):
+    A = set(A)
+    for s in S.values():
+        if A.issubset(s):
+            return True
+    return False
 
 
 if __name__ == "__main__":
 
-    correct = 0
-    n = 10
-    for _ in range(n):
-        g = Graph()
-        g.add_variable("L1", None, 2)
-        g.add_variable("X1", "L1", 15)
-        g.add_variable("X2", "L1", 15)
+    k=2
+    g = Graph()
+    g.scenarioA()
 
-        A = g.calc_infdist2("X1", "L1")
-        B = g.calc_infdist2("X2", "L1")
-        C = g.calc_infdist2("X1", "X2")
-        correct += math.isclose(A+B, C, abs_tol=1e-6)
-        print(f"{A+B},{C}")
-        J_X1X2 = g.get_joint("X1", "X2")
-        print(np.linalg.matrix_rank(J_X1X2))
-    print(f"Correct: {correct}/{n}")
-
-    #k=2
-    #g = Graph()
-    #g.add_variable("L1", None, k=k)
-    #g.add_variable("L2", "L1", k=k)
-    #g.add_variable("L3", ["L1", "L2"], k=k)
-    #g.add_variable("L4", "L3", k=k)
-    #g.add_variable("X1", "L1", k=k)
-    #g.add_variable("X2", "L1", k=k)
-    #g.add_variable("X3", "L2", k=k)
-    #g.add_variable("X4", "L2", k=k)
-    #g.add_variable("X5", ["L1", "L2"], k=k)
-    #g.add_variable("X6", ["L1", "L2"], k=k)
-    #g.add_variable("X7", "L3", k=k)
-    #g.add_variable("X8", "L3", k=k)
-    #g.add_variable("X9", "L4", k=k)
-    #g.add_variable("X10", "L4", k=k)
-
-
-
+    g.find_pure_clusters()
