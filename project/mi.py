@@ -14,6 +14,7 @@ plt.rcParams.update({'axes.labelsize': 18})
 import seaborn as sns
 from tqdm import tqdm
 import sys
+from pdb import set_trace
 
 # Return list of items in first that are not in second
 def listdiff(first, second):
@@ -278,52 +279,160 @@ class Graph:
 
 
     def find_pure_clusters(self):
-        l = 1
         V = set(self.xvars)
-        S = {}
+        G = {}
         k = 2
+        l = 1
         while k<3:
             temp_S = {}
             print(f"{'='*10} k is {k} {'='*10}")
-            for test_vars in combinations(V, k*2):
-                A = list(test_vars[:k])
-                B = list(test_vars[k:])
-                #if check_subset(A, S) or check_subset(B, S):
-                #    continue
+            for j in range(k-1):
+                for Lset in G.generateLatentSubset(j):
+                    A = pickSubset(La, S)
+                    for Xp, Yp in pickNewVars(V, S, k):
+                        A.add(Xp); A.add(Yp)
+                        B = list(V - set(A))
+                        rankCheck = self.rank_test(A, B)
+                        print(f"{lprint(A)} vs {lprint(B)}: {rankCheck}")
 
-                # Check if remaining_vars is a valid reference set
-                remaining_vars = list(V - set(test_vars))
-                rankCheck = self.rank_test(A+B, remaining_vars)
-                print(f"{lprint(A+B)} vs {lprint(remaining_vars)}: {rankCheck}")
-                if rankCheck <= k:
-                    continue
+                        if rankCheck == k-1:
+                            newCluster = Group(La, A)
+                            newCluster = {f"L{l}": set(A)}
+                            temp_S.update(newCluster)
+                            l += 1
                 
-                phi_list = []
-                for C in combinations(remaining_vars, k):
-                    A, B, C = list(A), list(B), list(C)
-                    phi_list.append(g.calc_phi(A, B, C))
-                    #if set(A+B) == set(["X4", "X5", "X3", "X6"]):
-                    #    print(f"AC: {lprint(A+C)}| {g.calc_infdist(A, C)}")
-                    #    print(f"BC: {lprint(B+C)}| {g.calc_infdist(B, C)}")
-                    #    print(f"A:{A}, B:{B}, C:{C} | {phi_list[-1]}")
-
-                if check_list_close(phi_list):
-                    print(f"Found cluster: {A+B}")
-                    print(phi_list)
-                    L = f"L{l}"
-                    temp_S[L] = A+B
-                    l+=1
-
             S = merge_clusters(temp_S)
-            #for k, vs in S.items():
-            #    V = V - set(vs)
-            #    V.add(k)
             print(S)
             print(V)
             k+=1
 
+
+class Group():
+    def __init__(self, parents, children):
+        self.parents = parents    # frozenset
+        self.children = children  # frozenset
+        self.size = len(parents)
+
+class Groups():
+    def __init__(self):
+        self.d = {}
+        self.dimsDict = {}
+        self.maxL = 1
+
+    def add_group(self, Lset, A):
+        newL = set([f"L{self.maxL}"])
+        self.maxL += 1
+        newParents = frozenset(Lset.union(newL))
+        self.d[newParents] = A
+
+        # Add to dimsDict
+        dims = len(newParents)
+        if dims in self.dimsDict:
+            self.dimsDict[dims].append(newParents)
+        else:
+            self.dimsDict[dims] = [newParents]
+
+
+    # Generate list of subsets of latent variables of a particular
+    # dimension.
+    def generateLatentSubset(self, j):
+
+        def recursiveSearch(d, gap, currSubset=[]):
+            thread = f"currSubset: {currSubset}, d: {d}, gap is {gap}"
+            d = deepcopy(d)
+            currSubset = deepcopy(currSubset)
+            llist = []
+
+            # Terminate if empty list
+            if len(d) == 0:
+                return llist
+
+            # Pop latent sets larger than current gap
+            maxDim = max(d)
+            while maxDim > gap:
+                d.pop(maxDim)
+                maxDim = max(d)
+
+            # Pop one element
+            newGroup = d[maxDim].pop()
+            if len(d[maxDim]) == 0:
+                d.pop(maxDim)
+
+            # Branch to consider all cases
+            # Continue current search without this element
+            if len(d) > 0:
+                llist.extend(recursiveSearch(d, gap, currSubset))
+
+            # Terminate branch if newGroup overlaps with currSubset
+            if groupInLatentSet(newGroup, currSubset):
+                return llist
+
+            gap -= maxDim
+            currSubset.append(newGroup)
+
+            # Continue search if gap not met
+            if gap > 0 and len(d) > 0:
+                llist.extend(recursiveSearch(d, gap, currSubset))
+
+            # End of search tree
+            if gap == 0:
+                llist.append(currSubset)
+
+            return llist
+
+        
+        # Init
+        d = deepcopy(self.dimsDict)
+        return recursiveSearch(d, j)
+        
+
+
+    # Merge overlapping groups of the same cardinality.
+    def merge_groups(self):
+        inv_list = {}
+        for name, group in self.d.items():
+            for child in group.children:
+                inv_list[child] = inv_list.get(child, set()) + name
+    
+        #groups = []
+        #for parent_set in inv_list.values():
+        #    if len(parent_set) > 1:
+        #        if len(groups) == 0:
+        #            groups.append(parent_set)
+    
+        #        for i, group in enumerate(groups):
+        #            if len(group.intersection(parent_set)) > 0:
+        #                groups[i].update(parent_set)
+        #            else:
+        #                groups.append(parent_set)
+    
+        ## These groups need to be merged
+        #for group in groups:
+        #    new_key = min(group)
+        #    new_vals = set()
+        #    for lvar in group:
+        #        new_vals.update(self.S.pop(l))
+        #    self.S[new_key] = list(new_vals)
+
+
+# La: List of latent variables to include in testing set
+# S: Full dictionary of latent vars and their children
+# Return: Subset of measured variables A of size |La| and 
+#         pa(A) = La
+def pickSubset(La, S):
+    j = len(La)
+
+
+# Check if new group of latent vars exists in a current
+# list of latent vars
+def groupInLatentSet(newGroup: frozenset, currSubset: List[frozenset]):
+    for group in currSubset:
+        if len(newGroup.intersection(group)) > 0:
+            return True
+    return False
+
 def lprint(l):
-    return ",".join(l)
+    return ",".join(sorted(l))
 
 # Check if a list of phi values are all close
 def check_list_close(l):
@@ -339,34 +448,6 @@ def check_list_close(l):
     return True
 
 
-# Given a dictionary of clusters, merge overlapping clusters
-# of the same cardinality.
-def merge_clusters(S):
-    inv_list = {}
-    for k, vs in S.items():
-        for v in vs:
-            inv_list[v] = inv_list.get(v, []) + [k]
-
-    groups = []
-    for vs in inv_list.values():
-        if len(vs) > 1:
-            if len(groups) == 0:
-                groups.append(set(vs))
-
-            for i, group in enumerate(groups):
-                if len(group.intersection(vs)) > 0:
-                    groups[i].update(vs)
-                else:
-                    groups.append(set(vs))
-
-    for group in groups:
-        new_key = min(group)
-        new_vals = set()
-        for l in group:
-            new_vals.update(S.pop(l))
-        S[new_key] = list(new_vals)
-
-    return S
 
 # Checks if a set of values is a subset of any clusters in S
 def check_subset(A, S):
@@ -379,8 +460,15 @@ def check_subset(A, S):
 
 if __name__ == "__main__":
 
-    k=2
-    g = Graph()
-    g.scenarioA()
+    #k=2
+    #g = Graph()
+    #g.scenarioA()
+    #g.find_pure_clusters()
 
-    g.find_pure_clusters()
+    g = Groups()
+    g.add_group(set(), ["X1", "X2"])
+    g.add_group(set(), ["X3", "X4"])
+    g.add_group(set(["L1"]), ["X5", "X6"])
+    g.add_group(set(["L2"]), ["X7", "X8"])
+    print(g.d)
+    print(g.generateLatentSubset(3))
