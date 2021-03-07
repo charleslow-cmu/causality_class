@@ -5,7 +5,7 @@ from itertools import product, combinations
 import math
 from copy import deepcopy
 import matplotlib.pyplot as plt
-from typing import List
+from typing import List, Tuple
 plt.rcParams.update({'figure.autolayout': True})
 plt.rcParams.update({'font.size': 14})
 plt.rcParams.update({'xtick.labelsize': 12})
@@ -15,6 +15,9 @@ import seaborn as sns
 from tqdm import tqdm
 import sys
 from pdb import set_trace
+
+def sq(X):
+    return math.pow(X, 2)
 
 # Return list of items in first that are not in second
 def listdiff(first, second):
@@ -246,21 +249,46 @@ class Graph:
         return df_subset
 
     def rank_test(self, A:List[str], B:List[str]):
+        A = list(A)
+        B = list(B)
         Jab = self.jpd.groupby(A+B)["p"].sum().reset_index()
         Jab = Jab.pivot(index=A, columns=B, values="p")
         Jab = np.array(Jab)
         return math.log2(np.linalg.matrix_rank(Jab))
 
+    # Park this idea here for now, using hyperdeterminant to get vanishing 
+    # ranks
+    def hyperdet(self, A:str, B: str, C:str):
+        Jpd = self.jpd.groupby([A, B, C]).sum().reset_index()
+        X = np.zeros(shape = (2,2,2))
+        for a in Jpd[A].unique().tolist():
+            for b in Jpd[B].unique().tolist():
+                for c in Jpd[C].unique().tolist():
+                    ai=int(a); bi=int(b); ci=int(c)
+                    X[ai,bi,ci] = \
+                      Jpd.query(f"({A}=='{a}')&({B}=='{b}')&({C}=='{c}')")["p"]
+        det = sq(X[0,0,0]) * sq(X[1,1,1]) + sq(X[0,0,1]) * sq(X[1,1,0]) + \
+              sq(X[0,1,0]) * sq(X[1,0,1]) + sq(X[1,0,0]) * sq(X[0,1,1]) - \
+              2*X[0,0,0] * X[0,0,1] * X[1,1,0] * X[1,1,1] - \
+              2*X[0,0,0] * X[0,1,0] * X[1,0,1] * X[1,1,1] - \
+              2*X[0,0,0] * X[0,1,1] * X[1,0,0] * X[1,1,1] - \
+              2*X[0,0,1] * X[0,1,0] * X[1,0,1] * X[1,1,0] - \
+              2*X[0,0,1] * X[0,1,1] * X[1,1,0] * X[1,0,0] - \
+              2*X[0,1,0] * X[0,1,1] * X[1,0,1] * X[1,0,0] + \
+              4*X[0,0,0] * X[0,1,1] * X[1,0,1] * X[1,1,0] + \
+              4*X[0,0,1] * X[0,1,0] * X[1,0,0] * X[1,1,1]
+        print(det)
+
     def scenarioA(self): 
         self.add_variable("L3", None)
         self.add_variable("L4", None)
-        self.add_variable("X6", "L3")
-        self.add_variable("X7", "L4")
+        self.add_variable("X7", ["L3", "L4"])
+        self.add_variable("X6", "L4")
+        self.add_variable("X5", "L3")
         self.add_variable("L1", ["L3", "L4"])
         self.add_variable("L2", ["L3", "L4"])
         self.add_variable("X1", "L1")
         self.add_variable("X2", "L1")
-        self.add_variable("X5", "L1")
         self.add_variable("X3", "L2")
         self.add_variable("X4", ["L1", "L2"])
 
@@ -269,7 +297,7 @@ class Graph:
         self.add_variable("L1", None)
         self.add_variable("L2", None)
         self.add_variable("L3", "L1")
-        self.add_variable("L4", "L4")
+        self.add_variable("L4", "L2")
         self.add_variable("X1", ["L1", "L2"])
         self.add_variable("X2", ["L1", "L2"])
         self.add_variable("X3", ["L1", "L2"])
@@ -277,155 +305,429 @@ class Graph:
         self.add_variable("X5", ["L3", "L4"])
         self.add_variable("X6", ["L3", "L4"])
 
+    def scenarioPyramid(self): 
+        self.add_variable("L1", None)
+        self.add_variable("L2", "L1")
+        self.add_variable("L3", ["L1", "L2"])
+        self.add_variable("L4", "L2")
+        self.add_variable("L5", "L1")
+        self.add_variable("L6", "L1")
+        self.add_variable("L7", "L2")
+        self.add_variable("L8", "L3")
+        self.add_variable("L9", "L3")
+        self.add_variable("L10", "L4")
+        self.add_variable("L11", "L4")
 
+        self.add_variable("X1", "L5")
+        self.add_variable("X2", ["L5", "L6"])
+        self.add_variable("X3", "L6")
+        self.add_variable("X4", "L7")
+        self.add_variable("X5", "L7")
+        self.add_variable("X6", ["L2", "L7"])
+        self.add_variable("X7", "L8")
+        self.add_variable("X8", "L8")
+        self.add_variable("X9", "L9")
+        self.add_variable("X10", ["L9", "L10"])
+        self.add_variable("X11", "L10")
+        self.add_variable("X12", "L10")
+        self.add_variable("X13", "L11")
+        self.add_variable("X14", "L11")
+
+    # llist should be a list of latent variable frozensets
     def find_pure_clusters(self):
         V = set(self.xvars)
-        G = {}
+        G = LatentGroups(V)
         k = 2
         l = 1
-        while k<3:
-            temp_S = {}
-            print(f"{'='*10} k is {k} {'='*10}")
-            for j in range(k-1):
-                for Lset in G.generateLatentSubset(j):
-                    A = pickSubset(La, S)
-                    for Xp, Yp in pickNewVars(V, S, k):
-                        A.add(Xp); A.add(Yp)
-                        B = list(V - set(A))
-                        rankCheck = self.rank_test(A, B)
-                        print(f"{lprint(A)} vs {lprint(B)}: {rankCheck}")
+        for run in range(2):
+            k = 2
+            sufficientActiveVars = True
+            while sufficientActiveVars:
+                print(f"{'='*10} k is {k} {'='*10}")
+                for j in range(k-1):
+                    print(f"{'-'*10} j is {j} {'-'*10}")
+                    for llist in generateSubset(G.V["latent"], j):
+                        for B in G.pickActiveVars(k-j):
+                            
+                            if len(B) < k-j:
+                                sufficientActiveVars = False
+                                break
 
-                        if rankCheck == k-1:
-                            newCluster = Group(La, A)
-                            newCluster = {f"L{l}": set(A)}
-                            temp_S.update(newCluster)
-                            l += 1
-                
-            S = merge_clusters(temp_S)
-            print(S)
-            print(V)
-            k+=1
+                            # C is get all other active vars
+                            C = G.V["active"] - B
+                            A = G.pick1XperL(llist)
+                            B = G.pick1XperL(B)
+                            AB = A.union(B)
+                            C = G.pick1XperL(C, AB)
+
+                            if run > 0:
+                                set_trace()
+
+                            # Add in Latents in control set
+                            AB_fset = set(tuple([frozenset([x]) for x in AB]))
+                            latentControls = G.pick1XperL(G.V["latent"], AB_fset) 
+                            C = C.union(latentControls)
+
+                            if len(C) < len(AB):
+                                print("Control set is too small!")
+                                continue 
+
+                            try:
+                                rankCheck = self.rank_test(AB, C)
+                            except AttributeError:
+                                set_trace()
+
+                            if rankCheck == k-1:
+                                print(f"Cluster found!: {B} with {llist}")
+                                G.addTempGroup(llist, B)
+
+                        G.mergeTempGroups()
+                G.confirmTempGroups()
+                pprint(G.d)
+                k+=1
+
+            print("End of one cycle")
+            G.V["active"].update(G.V["latent"])
+            G.V["latent"] = set()
+
+def pprint(d):
+
+    def fsetToText(fset):
+        l = [x for x in iter(fset)]
+        return ",".join(l)
+
+    for parents, v in d.items():
+        subgroups = v["subgroups"]
+        children = v["children"]
+        parents = f"[{','.join([x for x in parents])}]"
+        children = ",".join([fsetToText(fset) for fset in children])
+
+        text = f"{parents} : {children}"
+        if len(subgroups) > 0:
+            text += " | "
+            for subgroup in subgroups:
+                text += "["
+                text += ",".join([x for x in subgroup])
+                text += "] "
+        print(text)
 
 
-class Group():
-    def __init__(self, parents, children):
-        self.parents = parents    # frozenset
-        self.children = children  # frozenset
-        self.size = len(parents)
 
-class Groups():
-    def __init__(self):
+class LatentGroups():
+    def __init__(self, V):
         self.d = {}
-        self.dimsDict = {}
+        self.dTemp = {}
         self.maxL = 1
+        self.V = {"latent": set(), 
+                  "active": set([frozenset([v]) for v in V])}
 
-    def add_group(self, Lset, A):
-        newL = set([f"L{self.maxL}"])
-        self.maxL += 1
-        newParents = frozenset(Lset.union(newL))
-        self.d[newParents] = A
+    # llist: list of frozensets of latent variables
+    def addTempGroup(self, llist, B):
 
-        # Add to dimsDict
-        dims = len(newParents)
-        if dims in self.dimsDict:
-            self.dimsDict[dims].append(newParents)
+        # Create new Latent Variables
+        sizeL = len(B) - 1
+        newLlist = []
+        for i in range(sizeL):
+            newLlist.append(f"L{self.maxL}")
+            self.maxL += 1
+        newParents = frozenset(newLlist)
+
+        # Append to existing group
+        for element in llist:
+            newParents = newParents.union(element)
+
+        # Create new entry
+        self.dTemp[newParents] = {
+                "children": set([frozenset([b]) for b in B]),
+                "subgroups": llist
+                }
+
+
+    # Merge overlapping groups in dTemp
+    def mergeTempGroups(self):
+        if len(self.dTemp) == 0:
+            return
+
+        # Each parents is a frozenset
+        # Values of inv_list becomes a list of frozensets
+        inv_list = {}
+        for parents, values in self.dTemp.items():
+            children = values["children"]
+            for child in children:
+                parentList = inv_list.get(child, []) + [parents]
+                inv_list[child] = parentList
+        groups = []
+        print("loc1")
+
+        # Resolve the merging of latent variables
+        # 1. If one X is a child of two different groups, merge them
+        # 2. How many vars to merge?
+        # 3. Always merge the larger latent vars?
+
+        # Each parentList is a set of frozensets
+        for parentList in inv_list.values():
+            parentList = set(tuple(parentList))
+            if len(parentList) > 1:
+                if len(groups) == 0:
+                    groups.append(parentList)
+                    continue
+    
+                for i, group in enumerate(groups):
+                    print("loc2")
+                    if len(parentList.intersection(group)):
+                        groups[i] = groups[i].union(parentList)
+                    else:
+                        groups.append(parentList)
+
+        print("loc3")
+
+        # groups is now a list of sets
+        # Each element in each set is a frozenset of latent vars
+        # Need to do a pairwise merge
+        if len(groups) > 0:
+            for group in groups:
+                mergeDict = self.mergeGroup(group)
+                for oldkey, newkey in mergeDict.items():
+                    v = self.dTemp.pop(oldkey)
+                    if not newkey in self.dTemp:
+                        self.dTemp[newkey] = {}
+                        self.dTemp[newkey]["children"] = set()
+                        self.dTemp[newkey]["subgroups"] = set()
+                    self.dTemp[newkey]["children"].update(v["children"])
+                    self.dTemp[newkey]["subgroups"].update(v["subgroups"])
+
+    # findMergeableVars: Given a set of frozensets of latent vars, find
+    #                    subgroups which are not already identified latent
+    #                    variables.
+    def findMergeableVars(self, A):
+        A1 = set() # Non-mergeable
+        A2 = set() # Mergeable
+        for a in A:
+            if a in self.d:
+                A1.update([a])
+            else:
+                A2.update([a])
+        return A1, A2
+
+    # mergeGroup: return a 1-1 mapping from original group to new group
+    # args:
+    #     group: a list of sets of frozensets of latent vars
+    def mergeGroup(self, group):
+        mergeDict = {}
+
+        # Find lowest keys
+        k = len(next(iter(group)))
+        nums = []
+        for A in group:
+            A1, A2 = self.findMergeableVars(A)
+            Anums = [int(x[1:]) for x in A2]
+            nums.extend(Anums)
+        lowestKeys = sorted(nums)[0:k]
+        lowestKeys = frozenset([f"L{x}" for x in lowestKeys])
+
+        # Create new keys
+        for A in group:
+            A1, A2 = self.findMergeableVars(A)
+            newkey = A1.union(lowestKeys)
+            mergeDict[A] = frozenset(newkey)
+        return mergeDict
+
+
+
+    # Move elements in dTemp to d
+    def confirmTempGroups(self):
+        while len(self.dTemp) > 0:
+            parent_set, child_set = self.dTemp.popitem()
+            self.d[parent_set] = child_set
+
+            # Update V by grouping variables
+            self.V["active"] = self.V["active"] - child_set["children"]
+            self.V["latent"].add(parent_set)
+
+
+    # Generate list of groups of latent variables s.t. the resultant
+    # list of La has dim(La) = j
+    #def generateLatentSubset(self, j):
+
+    #    def recursiveSearch(d, gap, currSubset=[]):
+    #        thread = f"currSubset: {currSubset}, d: {d}, gap is {gap}"
+    #        d = deepcopy(d)
+    #        currSubset = deepcopy(currSubset)
+    #        llist = []
+
+    #        # Terminate if empty list
+    #        if len(d) == 0:
+    #            return llist
+
+    #        # Pop latent sets larger than current gap
+    #        maxDim = max(d)
+    #        while maxDim > gap:
+    #            d.pop(maxDim)
+    #            maxDim = max(d)
+
+    #        # Pop one element
+    #        newGroup = d[maxDim].pop()
+    #        if len(d[maxDim]) == 0:
+    #            d.pop(maxDim)
+
+    #        # Branch to consider all cases
+    #        # Continue current search without this element
+    #        if len(d) > 0:
+    #            llist.extend(recursiveSearch(d, gap, currSubset))
+
+    #        # Terminate branch if newGroup overlaps with currSubset
+    #        if groupInLatentSet(newGroup, currSubset):
+    #            return llist
+
+    #        gap -= maxDim
+    #        currSubset.append(newGroup)
+
+    #        # Continue search if gap not met
+    #        if gap > 0 and len(d) > 0:
+    #            llist.extend(recursiveSearch(d, gap, currSubset))
+
+    #        # End of search tree
+    #        if gap == 0:
+    #            llist.append(currSubset)
+
+    #        return llist
+
+    #    if j == 0:
+    #        return [[]]
+
+    #    result = recursiveSearch(self.dimsDict, j)
+    #    if len(result) == 0:
+    #        return [[]]
+    #    else:
+    #        return result
+
+    # fset: frozenset of latent variables
+    def pick1X(self, fset, usedXs=set()):
+        A = set()
+
+        v = self.d[fset]
+        if len(v["subgroups"]) > 0:
+            for sub_fset in v["subgroups"]:
+                A.update(self.pick1X(sub_fset, usedXs))
         else:
-            self.dimsDict[dims] = [newParents]
+            availableXs = v["children"] - usedXs
+            X = next(iter(availableXs))
+            A.add(next(iter(X)))
+        return A
 
 
-    # Generate list of subsets of latent variables of a particular
-    # dimension.
-    def generateLatentSubset(self, j):
 
-        def recursiveSearch(d, gap, currSubset=[]):
-            thread = f"currSubset: {currSubset}, d: {d}, gap is {gap}"
-            d = deepcopy(d)
-            currSubset = deepcopy(currSubset)
-            llist = []
+    # Recursive search for one X per latent var
+    # llist: set of frozensets of latent variables. children can be looked up
+    #        in self.d
+    def pick1XperL(self, varlist, usedXs=set()):
+        A = set()
+        for vset in varlist:
+            varnames = [str(v)[0] for v in vset]
+            vartype = varnames[0]
+            assert all([v == vartype for v in varnames]),\
+                    "Mixed types in a vset!"
 
-            # Terminate if empty list
-            if len(d) == 0:
-                return llist
+            if vartype == "X":
+                assert len(vset) == 1, "X variable with len > 1!"
+                A.add(next(iter(vset)))
+            else:
+                A.update(self.pick1X(vset, usedXs))
+        return A
 
-            # Pop latent sets larger than current gap
-            maxDim = max(d)
-            while maxDim > gap:
-                d.pop(maxDim)
-                maxDim = max(d)
 
-            # Pop one element
-            newGroup = d[maxDim].pop()
-            if len(d[maxDim]) == 0:
-                d.pop(maxDim)
+    # Take combinations of size num of measured vars after removing
+    # those already used in A
+    def pickActiveVars(self, num):
+        remaining_vars = self.V["active"]
+        Blist = generateSubset(remaining_vars, num)
+        return Blist
 
-            # Branch to consider all cases
-            # Continue current search without this element
-            if len(d) > 0:
-                llist.extend(recursiveSearch(d, gap, currSubset))
 
-            # Terminate branch if newGroup overlaps with currSubset
-            if groupInLatentSet(newGroup, currSubset):
-                return llist
+# generateSubset: Generate set of frozensets of variables s.t. the resultant
+#                 list of has dim(list) = j
+# args:
+#     vset: set of frozensets of variables
+def generateSubset(vset, j):
 
-            gap -= maxDim
-            currSubset.append(newGroup)
+    def recursiveSearch(d, gap, currSubset=set()):
+        thread = f"currSubset: {currSubset}, d: {d}, gap is {gap}"
+        d = deepcopy(d)
+        currSubset = deepcopy(currSubset)
+        llist = []
 
-            # Continue search if gap not met
-            if gap > 0 and len(d) > 0:
-                llist.extend(recursiveSearch(d, gap, currSubset))
-
-            # End of search tree
-            if gap == 0:
-                llist.append(currSubset)
-
+        # Terminate if empty list
+        if len(d) == 0:
             return llist
 
-        
-        # Init
-        d = deepcopy(self.dimsDict)
-        return recursiveSearch(d, j)
-        
+        # Pop latent sets larger than current gap
+        maxDim = max(d)
+        while maxDim > gap:
+            d.pop(maxDim)
+            maxDim = max(d)
+
+        # Pop one element
+        newGroup = d[maxDim].pop()
+        if len(d[maxDim]) == 0:
+            d.pop(maxDim)
+
+        # Branch to consider all cases
+        # Continue current search without this element
+        if len(d) > 0:
+            llist.extend(recursiveSearch(d, gap, currSubset))
+
+        # Terminate branch if newGroup overlaps with currSubset
+        if groupInLatentSet(newGroup, currSubset):
+            return llist
+
+        gap -= maxDim
+        currSubset.add(newGroup)
+
+        # Continue search if gap not met
+        if gap > 0 and len(d) > 0:
+            llist.extend(recursiveSearch(d, gap, currSubset))
+
+        # End of search tree
+        if gap == 0:
+            llist.append(currSubset)
+
+        return llist
+
+    if j == 0:
+        return [set()]
+
+    # Create dictionary where key is dimension size and v is a list 
+    # of frozensets of variables
+    d = {}
+    for fset in vset:
+        if isinstance(fset, str):
+            fset = frozenset([fset])
+        l = len(fset)
+        d[l] = d.get(l, []) + [fset]
+
+    # Run recursive search
+    result = recursiveSearch(d, j)
+    if len(result) == 0:
+        return [set()]
+    else:
+        return result
 
 
-    # Merge overlapping groups of the same cardinality.
-    def merge_groups(self):
-        inv_list = {}
-        for name, group in self.d.items():
-            for child in group.children:
-                inv_list[child] = inv_list.get(child, set()) + name
-    
-        #groups = []
-        #for parent_set in inv_list.values():
-        #    if len(parent_set) > 1:
-        #        if len(groups) == 0:
-        #            groups.append(parent_set)
-    
-        #        for i, group in enumerate(groups):
-        #            if len(group.intersection(parent_set)) > 0:
-        #                groups[i].update(parent_set)
-        #            else:
-        #                groups.append(parent_set)
-    
-        ## These groups need to be merged
-        #for group in groups:
-        #    new_key = min(group)
-        #    new_vals = set()
-        #    for lvar in group:
-        #        new_vals.update(self.S.pop(l))
-        #    self.S[new_key] = list(new_vals)
+# Unpack all elements in a frozenset into a list of strings
+def unpack(fset): 
+    l = []
+    for item in fset:
+        if isinstance(item, frozenset):
+            l.extend(unpack(item))
+        else:
+            l.append(item)
+    return l
 
-
-# La: List of latent variables to include in testing set
-# S: Full dictionary of latent vars and their children
-# Return: Subset of measured variables A of size |La| and 
-#         pa(A) = La
-def pickSubset(La, S):
-    j = len(La)
 
 
 # Check if new group of latent vars exists in a current
 # list of latent vars
-def groupInLatentSet(newGroup: frozenset, currSubset: List[frozenset]):
+def groupInLatentSet(newGroup: frozenset, currSubset: set):
     for group in currSubset:
         if len(newGroup.intersection(group)) > 0:
             return True
@@ -460,15 +762,7 @@ def check_subset(A, S):
 
 if __name__ == "__main__":
 
-    #k=2
-    #g = Graph()
-    #g.scenarioA()
-    #g.find_pure_clusters()
+    g = Graph()
+    g.scenarioPyramid()
+    g.find_pure_clusters()
 
-    g = Groups()
-    g.add_group(set(), ["X1", "X2"])
-    g.add_group(set(), ["X3", "X4"])
-    g.add_group(set(["L1"]), ["X5", "X6"])
-    g.add_group(set(["L2"]), ["X7", "X8"])
-    print(g.d)
-    print(g.generateLatentSubset(3))
