@@ -19,13 +19,13 @@ from pdb import set_trace
 def sq(X):
     return math.pow(X, 2)
 
+def pow(x, y):
+    return int(math.pow(x, y))
+
 # Return list of items in first that are not in second
 def listdiff(first, second):
     second = set(second)
     return [item for item in first if item not in second]
-
-def make_keys(k=1):
-    return [str(i) for i in range(k+1)]
 
 # Add 'key' column based on unique combi of keys
 def add_key_column(df, vlist):
@@ -38,18 +38,6 @@ def dicttostr(d):
     for k,v in d.items():
         l.append(f"{k}:{v}")
     return f"|{','.join(l)}|"
-
-
-# Randomly sample the conditional distribution
-def make_column(k=1):
-    lprobs = []
-    remainder = 1
-    for j in range(k):
-        p = random.uniform(0.05, 0.95) * remainder
-        lprobs.append(p)
-        remainder -= p
-    lprobs.append(remainder)
-    return pd.Series(lprobs)
 
 
 # Given a dictionary of key and values, retrieve
@@ -75,51 +63,6 @@ def replace(df: pd.DataFrame, d, p):
     df.loc[idx, "p"] *= p
 
 
-def make_jpd(jpd, parents, name, k=1):
-
-    # Insert this variable into the jpd
-    lrows = []
-    dlist = jpd.to_dict(orient="records")
-    for i in range(len(dlist)):
-        for v in make_keys(k):
-            d = deepcopy(dlist[i])
-            d[name] = v
-            lrows.append(d)
-    df = pd.DataFrame(lrows)
-    df = sort_columns(df)
-
-    # No parents case
-    if parents is None:
-        vlist = list(jpd.drop("p", axis=1).columns)
-        df = add_key_column(df, vlist)
-        p = make_column(k=k)
-        clist = []
-        for key in pd.unique(df['key']):
-            clist.append(p)
-        column = pd.concat(clist, ignore_index=True)
-        df["p"] *= column
-        df = df.drop("key", axis=1)
-
-    else:
-        # Make cpd from direct parents 
-        df_subset = df.loc[:, parents + [name]]
-        df_subset = df_subset.drop_duplicates().reset_index(drop=True)
-        df_subset = add_key_column(df_subset, parents)
-        clist = []
-        for key in pd.unique(df_subset['key']):
-            p = make_column(k=k)
-            clist.append(p)
-        column = pd.concat(clist, ignore_index=True)
-        df_subset["p"] = column
-        df_subset = df_subset.drop("key", axis=1)
-
-        # Replace the jpd ps with new ones
-        dlist = df_subset.to_dict(orient="records")
-        for d in dlist:
-            p = d.pop("p")
-            replace(df, d, p)
-    return df
-
 
 def sort_columns(df):
     l = ["L", "X", "p", "key"]
@@ -132,12 +75,13 @@ def sort_columns(df):
 
 class Graph:
     def __init__(self):
+        self.vars = []
         self.xvars = []
         self.lvars = []
         self.jpd = None
 
-    # k is number of categories for this variable
-    def add_variable(self, name, parents=None, k=2):
+    # Assume binary variables
+    def add_variable(self, name, parents=None):
         if isinstance(parents, str):
             parents = [parents]
 
@@ -147,46 +91,112 @@ class Graph:
             valid_parents = len(set(parents)-variables) == 0
             assert valid_parents, "Parents not found in graph!"
 
+        # Keep track of variables
+        self.vars.append(name)
         if "X" in name:
             self.xvars.append(name)
         else:
             self.lvars.append(name)
 
         # Adding first variable
-        if len(self.lvars) + len(self.xvars) == 1:
-            d = {name: make_keys(k-1), "p": make_column(k=k-1)}
-            self.jpd = pd.DataFrame(d)
+        if len(self.vars) == 1:
+            self.jpd = pd.DataFrame({"key": [0, 1], "p": self.make_column()})
             return
 
         # Adding subsequent vars
-        self.jpd = make_jpd(self.jpd, parents, name, k=k-1)
+        self.make_jpd(parents, name)
         assert math.isclose(sum(self.jpd["p"]), 1), "JPD does not sum to 1"
+        print(f"Adding {name}... jpd is {self.jpd.shape}")
 
-    # Get Marginal Probability P(X)
-    def get_marginal(self, X: str):
-        Dx = self.jpd.groupby(X)["p"].sum().reset_index()
-        return Dx
+    # Randomly sample the conditional distribution
+    def make_column(self):
+        p = random.uniform(0.05, 0.95)
+        lprobs = [p, 1-p]
+        return pd.Series(lprobs)
+    
+    def cpdKeyToJpdKey(self, cpdKey, matchingIndices):
+        key = 0
+        shift = len(matchingIndices)-1
+        i = 0
+        while shift >= 0:
+            leftmostBit = ((cpdKey & (1 << shift)) >> shift)
+            key += (leftmostBit << matchingIndices[i])
+            shift -= 1
+            i += 1
+        return key
 
-    # Get Conditional Probability P(X|Ys)
-    def get_conditional(self, X: str, Ys: List[str]):
-        if isinstance(Ys, str):
-            Ys = [Ys]
-        Vs = Ys + [X]
-        Jxy = self.jpd.groupby(Vs)["p"].sum().reset_index()
-        Jxy["p"] = Jxy.groupby(Ys)["p"].apply(lambda x: x/x.sum())
-        Jxy = Jxy.pivot(index=Ys, columns=X, values="p")
-        return Jxy
+    def makeMask(self, matchingIndices):
+        mask = 0
+        for idx in matchingIndices:
+            mask += (1 << idx)
+        return mask
 
-    # Get Joint Probability P(X,Y)
-    def get_joint(self, Xs: List[str], Ys: List[str]):
-        if isinstance(Xs, str):
-            Xs = [Xs]
-        if isinstance(Ys, str):
-            Ys = [Ys]
-        Vs = Xs + Ys
-        Jxy = self.jpd.groupby(Vs)["p"].sum().reset_index()
-        Jxy = Jxy.pivot(index=Xs, columns=Ys, values="p")
-        return Jxy
+    def varToBitIdx(self, varname):
+        return len(self.vars)-self.vars.index(varname)-1
+
+    def getValueAtBitIdx(self, keys, bitIdx):
+        return (keys & (1 << bitIdx)).values >> bitIdx
+    
+    # Use bits of jpd.key as indicator variables
+    def make_jpd(self, parents, name):
+    
+        # Duplicate the dataframe
+        self.jpd["key"] = self.jpd["key"] * 2 # Bitwise left shift
+        jpd2 = self.jpd.copy(deep=True)
+        jpd2["key"] = jpd2["key"] + 1
+        self.jpd = self.jpd.append(jpd2, ignore_index=True)
+    
+        # No parents case
+        if parents is None:
+            p = self.make_column()
+            filter0 = ((self.jpd["key"]+1) & 1).astype(bool)
+            filter1 = (self.jpd["key"] & 1).astype(bool)
+            self.jpd.loc[filter0, "p"] *= p[0]
+            self.jpd.loc[filter1, "p"] *= p[1]
+    
+        else:
+            # Make CPD P(new var | parents)
+            k = len(parents)
+            matchingIndices = [len(self.vars)-self.vars.index(x)-1 for x in parents]
+            matchingIndices.append(0)
+            matchingIndices.sort(reverse=True)
+            mask = self.makeMask(matchingIndices)
+            cpd_keys = list(range(pow(2, k+1)))
+            p = pd.concat([self.make_column() for x in range(pow(2, k))],
+                          ignore_index=True)
+
+            for i, _ in enumerate(cpd_keys):
+                cpd_key = cpd_keys[i]
+                jpd_key = self.cpdKeyToJpdKey(cpd_key, matchingIndices)
+                jpdfilter = (mask & (self.jpd["key"]^jpd_key)).astype(bool)
+                jpdfilter = ~jpdfilter
+                self.jpd.loc[jpdfilter, "p"] *= p[i]
+
+    ## Get Marginal Probability P(X)
+    #def get_marginal(self, X: str):
+    #    Dx = self.jpd.groupby(X)["p"].sum().reset_index()
+    #    return Dx
+
+    ## Get Conditional Probability P(X|Ys)
+    #def get_conditional(self, X: str, Ys: List[str]):
+    #    if isinstance(Ys, str):
+    #        Ys = [Ys]
+    #    Vs = Ys + [X]
+    #    Jxy = self.jpd.groupby(Vs)["p"].sum().reset_index()
+    #    Jxy["p"] = Jxy.groupby(Ys)["p"].apply(lambda x: x/x.sum())
+    #    Jxy = Jxy.pivot(index=Ys, columns=X, values="p")
+    #    return Jxy
+
+    ## Get Joint Probability P(X,Y)
+    #def get_joint(self, Xs: List[str], Ys: List[str]):
+    #    if isinstance(Xs, str):
+    #        Xs = [Xs]
+    #    if isinstance(Ys, str):
+    #        Ys = [Ys]
+    #    Vs = Xs + Ys
+    #    Jxy = self.jpd.groupby(Vs)["p"].sum().reset_index()
+    #    Jxy = Jxy.pivot(index=Xs, columns=Ys, values="p")
+    #    return Jxy
 
     def calc_infdist(self, Xs: List[str], Ys: List[str]):
         if isinstance(Xs, str):
@@ -251,9 +261,22 @@ class Graph:
     def rank_test(self, A:List[str], B:List[str]):
         A = list(A)
         B = list(B)
-        Jab = self.jpd.groupby(A+B)["p"].sum().reset_index()
+        C = A+B
+
+        # Zero out non-involved variables and aggregate
+        indices = [self.varToBitIdx(v) for v in C]
+        mask = self.makeMask(indices)
+        self.jpd["tempkey"] = (self.jpd["key"] & mask)
+        Jab = self.jpd.groupby("tempkey")["p"].sum().reset_index()
+
+        # Create variables
+        for v in C:
+            bitIdx = self.varToBitIdx(v)
+            Jab[v] = self.getValueAtBitIdx(Jab["tempkey"], bitIdx)
+
         Jab = Jab.pivot(index=A, columns=B, values="p")
         Jab = np.array(Jab)
+
         return math.log2(np.linalg.matrix_rank(Jab))
 
     # Park this idea here for now, using hyperdeterminant to get vanishing 
@@ -309,21 +332,16 @@ class Graph:
         self.add_variable("L1", None)
         self.add_variable("L2", "L1")
         self.add_variable("L3", ["L1", "L2"])
-        self.add_variable("L4", "L2")
-        self.add_variable("L5", "L1")
-        self.add_variable("L6", "L1")
-        self.add_variable("L7", "L2")
+        self.add_variable("L4", ["L1", "L2"])
         self.add_variable("L8", "L3")
         self.add_variable("L9", "L3")
         self.add_variable("L10", "L4")
         self.add_variable("L11", "L4")
 
-        self.add_variable("X1", "L5")
-        self.add_variable("X2", ["L5", "L6"])
-        self.add_variable("X3", "L6")
-        self.add_variable("X4", "L7")
-        self.add_variable("X5", "L7")
-        self.add_variable("X6", ["L2", "L7"])
+        self.add_variable("X1", "L1")
+        self.add_variable("X2", "L1")
+        self.add_variable("X5", "L2")
+        self.add_variable("X6", "L2")
         self.add_variable("X7", "L8")
         self.add_variable("X8", "L8")
         self.add_variable("X9", "L9")
@@ -332,6 +350,7 @@ class Graph:
         self.add_variable("X12", "L10")
         self.add_variable("X13", "L11")
         self.add_variable("X14", "L11")
+
 
     # llist should be a list of latent variable frozensets
     def find_pure_clusters(self):
@@ -346,25 +365,23 @@ class Graph:
                 print(f"{'='*10} k is {k} {'='*10}")
                 for j in range(k-1):
                     print(f"{'-'*10} j is {j} {'-'*10}")
-                    for llist in generateSubset(G.V["latent"], j):
-                        for B in G.pickActiveVars(k-j):
+                    for Ap in generateSubset(G.V["latent"], j):
+                        for Bp in G.pickActiveVars(k-j):
                             
-                            if len(B) < k-j:
+                            if setLength(Bp) < k-j:
+                                set_trace()
                                 sufficientActiveVars = False
                                 break
 
                             # C is get all other active vars
-                            C = G.V["active"] - B
-                            A = G.pick1XperL(llist)
-                            B = G.pick1XperL(B)
+                            C = G.V["active"] - Bp
+                            A = G.pick1XperL(Ap)
+                            B = G.pick1XperL(Bp)
                             AB = A.union(B)
-                            C = G.pick1XperL(C, AB)
-
-                            if run > 0:
-                                set_trace()
+                            AB_fset = set(tuple([frozenset([x]) for x in AB]))
+                            C = G.pick1XperL(C, AB_fset)
 
                             # Add in Latents in control set
-                            AB_fset = set(tuple([frozenset([x]) for x in AB]))
                             latentControls = G.pick1XperL(G.V["latent"], AB_fset) 
                             C = C.union(latentControls)
 
@@ -372,17 +389,18 @@ class Graph:
                                 print("Control set is too small!")
                                 continue 
 
-                            try:
-                                rankCheck = self.rank_test(AB, C)
-                            except AttributeError:
-                                set_trace()
+                            rankCheck = self.rank_test(AB, C)
 
                             if rankCheck == k-1:
-                                print(f"Cluster found!: {B} with {llist}")
-                                G.addTempGroup(llist, B)
+                                print(f"Cluster found!: {Bp} with {Ap}")
+                                G.addTempGroup(Ap, Bp)
 
                         G.mergeTempGroups()
-                G.confirmTempGroups()
+                        G.confirmTempGroups()
+
+                        # Break out of Ap loop
+                        if not sufficientActiveVars:
+                            break
                 pprint(G.d)
                 k+=1
 
@@ -412,6 +430,17 @@ def pprint(d):
         print(text)
 
 
+def setLength(varset):
+    if isinstance(varset, str):
+        return 1
+
+    n = 0
+    for vset in varset:
+        if isinstance(vset, frozenset):
+            n += len(vset)
+        else:
+            n += 1
+    return n
 
 class LatentGroups():
     def __init__(self, V):
@@ -425,7 +454,7 @@ class LatentGroups():
     def addTempGroup(self, llist, B):
 
         # Create new Latent Variables
-        sizeL = len(B) - 1
+        sizeL = setLength(B) - 1
         newLlist = []
         for i in range(sizeL):
             newLlist.append(f"L{self.maxL}")
@@ -438,7 +467,7 @@ class LatentGroups():
 
         # Create new entry
         self.dTemp[newParents] = {
-                "children": set([frozenset([b]) for b in B]),
+                "children": set(B),
                 "subgroups": llist
                 }
 
@@ -541,70 +570,15 @@ class LatentGroups():
             self.d[parent_set] = child_set
 
             # Update V by grouping variables
-            self.V["active"] = self.V["active"] - child_set["children"]
+            self.V["active"] = setDifference(self.V["active"], 
+                                    child_set["children"])
             self.V["latent"].add(parent_set)
 
 
-    # Generate list of groups of latent variables s.t. the resultant
-    # list of La has dim(La) = j
-    #def generateLatentSubset(self, j):
 
-    #    def recursiveSearch(d, gap, currSubset=[]):
-    #        thread = f"currSubset: {currSubset}, d: {d}, gap is {gap}"
-    #        d = deepcopy(d)
-    #        currSubset = deepcopy(currSubset)
-    #        llist = []
-
-    #        # Terminate if empty list
-    #        if len(d) == 0:
-    #            return llist
-
-    #        # Pop latent sets larger than current gap
-    #        maxDim = max(d)
-    #        while maxDim > gap:
-    #            d.pop(maxDim)
-    #            maxDim = max(d)
-
-    #        # Pop one element
-    #        newGroup = d[maxDim].pop()
-    #        if len(d[maxDim]) == 0:
-    #            d.pop(maxDim)
-
-    #        # Branch to consider all cases
-    #        # Continue current search without this element
-    #        if len(d) > 0:
-    #            llist.extend(recursiveSearch(d, gap, currSubset))
-
-    #        # Terminate branch if newGroup overlaps with currSubset
-    #        if groupInLatentSet(newGroup, currSubset):
-    #            return llist
-
-    #        gap -= maxDim
-    #        currSubset.append(newGroup)
-
-    #        # Continue search if gap not met
-    #        if gap > 0 and len(d) > 0:
-    #            llist.extend(recursiveSearch(d, gap, currSubset))
-
-    #        # End of search tree
-    #        if gap == 0:
-    #            llist.append(currSubset)
-
-    #        return llist
-
-    #    if j == 0:
-    #        return [[]]
-
-    #    result = recursiveSearch(self.dimsDict, j)
-    #    if len(result) == 0:
-    #        return [[]]
-    #    else:
-    #        return result
-
-    # fset: frozenset of latent variables
+    # Problem: Some usedXs appear in the result
     def pick1X(self, fset, usedXs=set()):
         A = set()
-
         v = self.d[fset]
         if len(v["subgroups"]) > 0:
             for sub_fset in v["subgroups"]:
@@ -641,8 +615,25 @@ class LatentGroups():
     def pickActiveVars(self, num):
         remaining_vars = self.V["active"]
         Blist = generateSubset(remaining_vars, num)
+
+        # Active vars cannot purely be from the same cluster
+        Blist = [B for B in Blist if len(B) > 1]
+        if len(Blist) == 0:
+            return [set()]
         return Blist
 
+# Take difference between sets of fsets
+# If any fset in setA is a subset of any fset in setB, remove it too
+def setDifference(setA, setB):
+    diff = setA - setB # first remove any common elements
+    newset = set()
+    while len(diff) > 0:
+        fsetA = diff.pop()
+        newset.add(fsetA)
+        for fsetB in setB:
+            if fsetA <= fsetB:
+                newset.remove(fsetA)
+    return newset
 
 # generateSubset: Generate set of frozensets of variables s.t. the resultant
 #                 list of has dim(list) = j
