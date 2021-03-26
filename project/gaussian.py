@@ -152,9 +152,11 @@ def generateSubset(vset, k=2):
 
 # Check if new group of latent vars exists in a current
 # list of latent vars
-def groupInLatentSet(v: MinimalGroup, currSubset: set):
-    return set([v]) in currSubset
-
+def groupInLatentSet(V: MinimalGroup, currSubset: set):
+    for group in currSubset:
+        if len(V.vars.intersection(group.vars)) > 0:
+            return True
+    return False
 
 # Print latent Dict
 def pprint(d):
@@ -276,6 +278,19 @@ class GaussianGraph:
             for A in results[r]:
                 print(f"Test {A}: {r}")
 
+    def scenario1(self):
+        self.add_variable("L3", None)
+        self.add_variable("L1", "L3")
+        self.add_variable("L2", "L1")
+        self.add_variable("X6", "L3")
+        self.add_variable("X7", "L3")
+        self.add_variable("X8", ["L2", "L3"])
+        self.add_variable("X1", "L1")
+        self.add_variable("X2", "L1")
+        self.add_variable("X3", ["L1", "L2"])
+        self.add_variable("X4", "L2")
+        self.add_variable("X5", "L2")
+
 
 #!!
 # Class to store discovered latent groups
@@ -292,10 +307,10 @@ class LatentGroups():
     # Ls: Existing set of MinimalGroups of latent variables
     # As: Set of MinimalGroups to add as children
     # If Ls is empty, we simply create new latent variables
-    def addToLatentSet(self, Ls, As):
+    def addToLatentSet(self, Ls, As, rankDeficiency=1):
 
         # Create new Latent Variables
-        sizeL = setLength(As) - 1
+        sizeL = setLength(As) - rankDeficiency
         newLlist = []
         for _ in range(sizeL):
             newLlist.append(f"L{self.i}")
@@ -306,14 +321,20 @@ class LatentGroups():
         for L in Ls:
             newParents.union(L)
 
+        # Create subgroups
+        subgroups = Ls
+        for A in As:
+            if A.isLatent():
+                subgroups.add(A)
+
         # Create new entry
         self.latentDictTemp[newParents] = {
                 "children": As,
-                "subgroups": Ls
+                "subgroups": subgroups
                 }
 
         # Remove from Active Set
-        self.activeSet = setDifference(self.activeSet, As)
+        # self.activeSet = setDifference(self.activeSet, As)
 
 
     # Merge overlapping groups in dTemp
@@ -411,17 +432,27 @@ class LatentGroups():
     # Recursive search for one X per latent var in minimal group L
     def pickRepresentativeMeasures(self, L):
         assert isinstance(L, MinimalGroup), "L is not a MinimalGroup."
+
+        if not L.isLatent():
+            return set([L])
+
         A = set()
         values = self.latentDict[L]
+        n = len(L)
 
         # Add one X per L from each subgroup
         if len(values["subgroups"]) > 0:
             for subL in values["subgroups"]:
                 A.update(self.pickRepresentativeMeasures(subL))
-        else:
-            availableXs = values["children"]
-            X = next(iter(availableXs))
-            A.add(X)
+
+        # Add remaining from own children
+        n = len(L) - setLength(values["subgroups"])
+        availableXs = values["children"]
+        for i, X in enumerate(iter(availableXs)):
+            if i >= n:
+                break
+            if not X.isLatent():
+                A.add(X)
         return A
 
     # As opposed to pickRepresentativeMeasures, pickAllMeasures 
@@ -439,8 +470,10 @@ class LatentGroups():
         if len(values["subgroups"]) > 0:
             for subL in values["subgroups"]:
                 A.update(self.pickAllMeasures(subL))
-        else:
-            A.update(values["children"])
+        
+        for C in values["children"]:
+            if not C.isLatent():
+                A.add(C)
         return A
 
 
@@ -481,8 +514,11 @@ class StructureFinder:
     # Test if A forms a group by seeing if it drops rank against all
     # other vars
     # A and B are sets of MinimalGroups
-    def structuralRankTest(self, As):
-        Bs = self.getMeasuredVarList(self.l.getAllOtherMeasuresFromGroups(As))
+    def structuralRankTest(self, Vs):
+        As = set()
+        for V in Vs:
+            As.update(self.l.pickRepresentativeMeasures(V))
+        Bs = self.getMeasuredVarList(self.l.getAllOtherMeasuresFromGroups(Vs))
         As = self.getMeasuredVarList(As)
 
         if len(Bs) < len(As):
@@ -491,16 +527,14 @@ class StructureFinder:
             return self.g.rankTest(As, Bs)
 
 
-    def runStructuralRankTest(self):
+    def runStructuralRankTest(self, run=1):
         print("Starting structuralRankTest...")
         r = 1
         sufficientActiveVars = True
         while sufficientActiveVars:
             for As in generateSubset(self.l.activeSet, r+1):
-                if not (As <= self.l.activeSet):
-                    continue
 
-                elif setLength(As) < r+1:
+                if setLength(As) < r+1:
                     sufficientActiveVars = False
                     break
 
@@ -515,7 +549,7 @@ class StructureFinder:
 
             r += 1
             self.l.mergeTempGroups()
-        self.l.confirmTempGroups()
+            self.l.confirmTempGroups()
         pprint(self.l.latentDict)
 
 
@@ -534,7 +568,10 @@ class StructureFinder:
             assert k == 1, "Measured Var of length > 1."
             As.add(V)
 
-        assert setLength(As) == r+k, "Wrong length"
+        try:
+            assert setLength(As) == r+k, "Wrong length"
+        except:
+            set_trace()
 
         # Construct Bs set
         Bs = self.getMeasuredVarList(self.l.getAllOtherMeasuresFromXs(As))
@@ -576,9 +613,77 @@ class StructureFinder:
         self.l.confirmTempGroups()
         pprint(self.l.latentDict)
 
-    # Test if A forms a new group with L by adding a latent var
-    def adjacentParentTest(self, L, A):
-        pass
+    # Test if As forms a new group with Ls by adding a latent var
+    def adjacentParentTest(self, Ls, Vs):
+        r = setLength(Ls)
+        k = setLength(Vs)
+        assert k >= 2, "Length of Vs too short"
+        As = set()
+
+        # Assemble representatives for Ls
+        for L in Ls:
+            As.update(self.l.pickRepresentativeMeasures(L))
+
+        # Assemble representatives for Vs
+        for V in Vs:
+            if V.isLatent():
+                As.update(self.l.pickRepresentativeMeasures(V))
+            else:
+                As.add(V)
+
+        # Assemble control set Bs
+        # We don't want to test against anything in the Vs groups
+        # Also don't want any measured vars already in As
+        Bs = self.l.getAllOtherMeasuresFromGroups(Vs)
+        Bs = Bs.intersection(self.l.getAllOtherMeasuresFromXs(As))
+
+        # Construct Bs set
+        Bs = self.getMeasuredVarList(Bs)
+        As = self.getMeasuredVarList(As)
+
+        if len(Bs) < len(As):
+            return -1
+        else:
+            return self.g.rankTest(As, Bs)
+
+
+    def runAdjacentParentTest(self):
+        print("Starting adjacentParentTest...")
+        r = 2 # Number of variables to test for parentSet
+        k = 1 # Number of MinimalGroup Latents to test as co-Parent
+        sufficientVars = True
+
+        while sufficientVars:
+            for As in generateSubset(self.l.activeSet, r):
+                if setLength(As) < r:
+                    sufficientVars = False
+                    break
+
+                for Ls in combinations(self.l.latentSet, k):
+                    Ls = set(Ls)
+
+                    if len(Ls) == 0:
+                        sufficientVars = False
+                        break
+
+                    rankResult = self.adjacentParentTest(Ls, As)
+                    if rankResult < 0:
+                        sufficientVars = False
+                        break
+
+                    rankDeficiency = setLength(Ls) + setLength(As) - rankResult
+                    if rankDeficiency > 0:
+                        print(f"Found that {As} belongs to {Ls} with co-parents.")
+                        self.l.addToLatentSet(Ls, As, rankDeficiency)
+
+            self.l.mergeTempGroups()
+            self.l.confirmTempGroups()
+            k += 1
+            if k >= len(self.l.latentSet):
+                break
+
+        pprint(self.l.latentDict)
+
 
     # Test if Ls d-separates As and Bs
     def relationshipTest(self, A, B, L):
@@ -587,23 +692,53 @@ class StructureFinder:
     # Algorithm to find the latent structure
     def findLatentStructure(self):
         self.l = LatentGroups(self.g.xvars)
-        self.runStructuralRankTest()
-        self.runParentSetTest()
+        run = 1
+        while len(self.l.activeSet) > 0:
+            self.runStructuralRankTest(run)
+            self.runParentSetTest()
+            self.runAdjacentParentTest()
+
+            # Move latentSet back into activeSet
+            self.l.activeSet.update(self.l.latentSet)
+            self.l.latentSet = set()
+            run += 1
 
 
 if __name__ == "__main__":
     g = GaussianGraph()
-    g.add_variable("L3", None)
-    g.add_variable("L1", "L3")
+    g.add_variable("L1", None)
     g.add_variable("L2", "L1")
-    g.add_variable("X6", "L3")
-    g.add_variable("X7", "L3")
-    g.add_variable("X8", ["L2", "L3"])
-    g.add_variable("X1", "L1")
-    g.add_variable("X2", "L1")
-    g.add_variable("X3", ["L1", "L2"])
-    g.add_variable("X4", "L2")
-    g.add_variable("X5", "L2")
+    g.add_variable("L3", "L1")
+    g.add_variable("L4", "L1")
+    g.add_variable("L5", "L1")
+    g.add_variable("L6", "L2")
+    g.add_variable("L7", ["L2", "L3"])
+    g.add_variable("L8", ["L2", "L3"])
+    g.add_variable("L9", ["L2", "L3"])
+    g.add_variable("L10", "L3")
+    g.add_variable("L11", "L4")
+    g.add_variable("L12", ["L4", "L5"])
+    g.add_variable("L13", ["L4", "L5"])
+    g.add_variable("L14", ["L4", "L5"])
+    g.add_variable("L15", "L5")
+    g.add_variable("X1", "L6")
+    g.add_variable("X2", "L6")
+    g.add_variable("X3", "L7")
+    g.add_variable("X4", ["L7", "L8"])
+    g.add_variable("X5", ["L7", "L8"])
+    g.add_variable("X6", "L9")
+    g.add_variable("X7", "L9")
+    g.add_variable("X8", ["L9", "L10"])
+    g.add_variable("X9", "L10")
+    g.add_variable("X10", "L11")
+    g.add_variable("X11", "L11")
+    g.add_variable("X12", "L12")
+    g.add_variable("X13", ["L12", "L13"])
+    g.add_variable("X14", ["L12", "L13"])
+    g.add_variable("X15", "L14")
+    g.add_variable("X16", "L14")
+    g.add_variable("X17", ["L14", "L15"])
+    g.add_variable("X18", "L15")
 
     model = StructureFinder(g)
     model.findLatentStructure()
