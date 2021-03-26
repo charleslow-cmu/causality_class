@@ -106,7 +106,7 @@ class Graph:
         # Adding subsequent vars
         self.make_jpd(parents, name)
         assert math.isclose(sum(self.jpd["p"]), 1), "JPD does not sum to 1"
-        print(f"Adding {name}... jpd is {self.jpd.shape}")
+        #print(f"Adding {name}... jpd is {self.jpd.shape}")
 
     # Randomly sample the conditional distribution
     def make_column(self):
@@ -754,6 +754,12 @@ def check_subset(A, S):
 if __name__ == "__main__":
 
     g = Graph()
-    g.scenarioPyramid()
-    g.find_pure_clusters()
+    g.add_variable("X1", None)
+    g.add_variable("X3", None)
+    g.add_variable("X2", None)
+    g.add_variable("X4", ["X1", "X2", "X3"])
+    g.add_variable("X5", ["X2", "X4"])
+    print(math.pow(2, g.rank_test(["X1", "X3"], ["X4", "X5"])))
+    #g.scenarioPyramid()
+    #g.find_pure_clusters()
 
