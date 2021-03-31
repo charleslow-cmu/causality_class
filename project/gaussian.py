@@ -53,6 +53,10 @@ class MinimalGroup:
     def __repr__(self):
         return str(self)
 
+    def isSubset(self, B):
+        return self.vars <= B.vars
+
+
 #####################################################################
 # !!misc
 #####################################################################
@@ -69,18 +73,21 @@ def setLength(varset):
 
 
 # Take difference between sets of MinimalGroups
-def setDifference(A, B):
-    diff = A - B # first remove any common elements
-    #newset = set()
-    #while len(diff) > 0:
-    #    a = diff.pop()
-    #    newset.add(a)
-    #    for b in B:
-    #        if a <= b:
-    #            newset.remove(a)
-    return diff
+def setDifference(As, Bs):
+    diff = As - Bs # first remove any common elements
+    newset = set()
+    while len(diff) > 0:
+        A = diff.pop()
+        newset.add(A)
+        for B in Bs:
+            if A.isSubset(B):
+                newset.remove(A)
+    return newset
 
 
+def vprint(s, verbose=False):
+    if verbose:
+        print(s)
 
 # generateSubset: Generate set of MinimalGroups of variables 
 # vset: set of MinimalGroup of variables
@@ -159,7 +166,7 @@ def groupInLatentSet(V: MinimalGroup, currSubset: set):
     return False
 
 # Print latent Dict
-def pprint(d):
+def pprint(d, verbose=False):
 
     def fsetToText(fset):
         l = [x for x in iter(fset)]
@@ -176,7 +183,8 @@ def pprint(d):
             text += " | "
             for subgroup in subgroups:
                 text += f"[{str(subgroup)}]"
-        print(text)
+        if verbose:
+            print(text)
 
 #####################################################################
 # !!graph
@@ -259,24 +267,10 @@ class GaussianGraph:
     def rankTest(self, A, B):
         A = sorted(A)
         B = sorted(B)
-        cov = g.subcovariance(A, B)
+        cov = self.subcovariance(A, B)
         matrix_rank(cov)
         return matrix_rank(cov)
 
-    def ranktests(self, v=2):
-        results = {}
-        xset = set(self.xvars)
-        for A in combinations(self.xvars, v):
-            B = sorted(xset.difference(A))
-            A = sorted(A)
-            cov = g.subcovariance(A, B)
-            ranktest = matrix_rank(cov)
-            results[ranktest] = results.get(ranktest, []) + [A]
-
-        for r in results:
-            print(f"{'='*20} Rank {r} {'='*20}")
-            for A in results[r]:
-                print(f"Test {A}: {r}")
 
     def scenario1(self):
         self.add_variable("L3", None)
@@ -290,6 +284,63 @@ class GaussianGraph:
         self.add_variable("X3", ["L1", "L2"])
         self.add_variable("X4", "L2")
         self.add_variable("X5", "L2")
+
+
+    def scenario2(self):
+        self.add_variable("L1", None)
+        self.add_variable("L2", "L1")
+        self.add_variable("L3", "L1")
+        self.add_variable("L4", "L1")
+        self.add_variable("L5", "L1")
+        self.add_variable("L6", "L2")
+        self.add_variable("L7", ["L2", "L3"])
+        self.add_variable("L8", ["L2", "L3"])
+        self.add_variable("L9", ["L2", "L3"])
+        self.add_variable("L10", "L3")
+        self.add_variable("L11", "L4")
+        self.add_variable("L12", ["L4", "L5"])
+        self.add_variable("L13", ["L4", "L5"])
+        self.add_variable("L14", ["L4", "L5"])
+        self.add_variable("L15", "L5")
+        self.add_variable("X1", "L6")
+        self.add_variable("X2", "L6")
+        self.add_variable("X3", "L7")
+        self.add_variable("X4", ["L7", "L8"])
+        self.add_variable("X5", ["L7", "L8"])
+        self.add_variable("X6", "L9")
+        self.add_variable("X7", "L9")
+        self.add_variable("X8", ["L9", "L10"])
+        self.add_variable("X9", "L10")
+        self.add_variable("X10", "L11")
+        self.add_variable("X11", "L11")
+        self.add_variable("X12", "L12")
+        self.add_variable("X13", ["L12", "L13"])
+        self.add_variable("X14", ["L12", "L13"])
+        self.add_variable("X15", "L14")
+        self.add_variable("X16", "L14")
+        self.add_variable("X17", ["L14", "L15"])
+        self.add_variable("X18", "L15")
+
+    def scenario3(self):
+        self.add_variable("L1", None)
+        self.add_variable("L2", "L1")
+        self.add_variable("L3", "L1")
+        self.add_variable("L5", "L2")
+        self.add_variable("L6", ["L2","L5"])
+        self.add_variable("L7", ["L2","L6"])
+
+        self.add_variable("X1", "L1")
+        self.add_variable("X6", "L1")
+        self.add_variable("X2", "L2")
+        self.add_variable("X3", "L3")
+        self.add_variable("X4", "L3")
+        self.add_variable("X5", "L3")
+        self.add_variable("X8", "L5")
+        self.add_variable("X9", "L5")
+        self.add_variable("X10", "L6")
+        self.add_variable("X11", "L6")
+        self.add_variable("X12", ["L6","L7"])
+        self.add_variable("X13", "L7")
 
 
 #!!
@@ -338,7 +389,7 @@ class LatentGroups():
 
 
     # Merge overlapping groups in dTemp
-    def mergeTempGroups(self):
+    def mergeTempGroups(self, run=1):
         if len(self.latentDictTemp) == 0:
             return
 
@@ -393,7 +444,6 @@ class LatentGroups():
             nums.extend(Anums)
         lowestKeys = sorted(nums)[0:k]
         lowestKeys = [f"L{x}" for x in lowestKeys]
-        print(lowestKeys)
 
         # Create new keys
         for A in group:
@@ -418,7 +468,7 @@ class LatentGroups():
 
 
     # Move elements in latentDictTemp to latentDict
-    def confirmTempGroups(self):
+    def confirmTempGroups(self, run=1):
         while len(self.latentDictTemp) > 0:
             p, values = self.latentDictTemp.popitem()
             self.latentDict[p] = values
@@ -497,6 +547,7 @@ class StructureFinder:
     def __init__(self, g):
         self.g = g     # graph object
         self.l = None  # LatentGroups object
+        self.verbose = False
 
     # Extract all measured vars in a list from a set of MinimalGroups
     # A: a set of MinimalGroups
@@ -527,14 +578,14 @@ class StructureFinder:
             return self.g.rankTest(As, Bs)
 
 
-    def runStructuralRankTest(self, run=1):
-        print("Starting structuralRankTest...")
-        r = 1
+    def runStructuralRankTest(self, k=2, run=1):
+        vprint("Starting structuralRankTest...", self.verbose)
+        anyFound = False
         sufficientActiveVars = True
         while sufficientActiveVars:
-            for As in generateSubset(self.l.activeSet, r+1):
+            for As in generateSubset(self.l.activeSet, k):
 
-                if setLength(As) < r+1:
+                if setLength(As) < k:
                     sufficientActiveVars = False
                     break
 
@@ -543,14 +594,21 @@ class StructureFinder:
                     sufficientActiveVars = False
                     break
 
-                if rankResult == r:
-                    self.l.addToLatentSet(set(), As)
-                    print(f"Found cluster {As}.")
+                maxRank = rankResult
+                for AsPrime in generateSubset(As, k-1):
+                    rankResultPrime = self.structuralRankTest(AsPrime)
+                    if rankResultPrime > maxRank:
+                        maxRank = rankResultPrime
 
-            r += 1
-            self.l.mergeTempGroups()
-            self.l.confirmTempGroups()
-        pprint(self.l.latentDict)
+                if maxRank == k-1:
+                    self.l.addToLatentSet(set(), As)
+                    vprint(f"Found cluster {As}.", self.verbose)
+                    anyFound = True
+
+            self.l.mergeTempGroups(run)
+            self.l.confirmTempGroups(run)
+        pprint(self.l.latentDict, self.verbose)
+        return anyFound
 
 
     # Test if V is children of Ls
@@ -568,10 +626,10 @@ class StructureFinder:
             assert k == 1, "Measured Var of length > 1."
             As.add(V)
 
-        try:
-            assert setLength(As) == r+k, "Wrong length"
-        except:
-            set_trace()
+        #try:
+        #    assert setLength(As) == r+k, "Wrong length"
+        #except:
+        #    set_trace()
 
         # Construct Bs set
         Bs = self.getMeasuredVarList(self.l.getAllOtherMeasuresFromXs(As))
@@ -582,8 +640,9 @@ class StructureFinder:
         else:
             return self.g.rankTest(As, Bs)
 
-    def runParentSetTest(self):
-        print("Starting parentSetTest...")
+    def runParentSetTest(self, run=1):
+        vprint("Starting parentSetTest...", self.verbose)
+        anyFound = False
         for V in self.l.activeSet:
             k = 1 # Number of MinimalGroup Latents to test as Parent
             sufficientVars = True
@@ -601,8 +660,9 @@ class StructureFinder:
                         break
 
                     if rankResult == setLength(Ls):
-                        print(f"Found that {V} belongs to {Ls}.")
+                        vprint(f"Found that {V} belongs to {Ls}.", self.verbose)
                         self.l.addToLatentSet(Ls, set([V]))
+                        anyFound = True
 
                 self.l.mergeTempGroups()
                 k += 1
@@ -611,7 +671,8 @@ class StructureFinder:
                     break
 
         self.l.confirmTempGroups()
-        pprint(self.l.latentDict)
+        pprint(self.l.latentDict, self.verbose)
+        return anyFound
 
     # Test if As forms a new group with Ls by adding a latent var
     def adjacentParentTest(self, Ls, Vs):
@@ -647,11 +708,13 @@ class StructureFinder:
             return self.g.rankTest(As, Bs)
 
 
-    def runAdjacentParentTest(self):
-        print("Starting adjacentParentTest...")
-        r = 2 # Number of variables to test for parentSet
-        k = 1 # Number of MinimalGroup Latents to test as co-Parent
+    # k: Number of variable to test
+    # r: Number of MinimalGroup Latents to test for as Co-Parent
+    def runAdjacentParentTest(self, k=2, run=1):
+        vprint("Starting adjacentParentTest...", self.verbose)
+        r = 1
         sufficientVars = True
+        anyFound = False
 
         while sufficientVars:
             for As in generateSubset(self.l.activeSet, r):
@@ -673,74 +736,72 @@ class StructureFinder:
 
                     rankDeficiency = setLength(Ls) + setLength(As) - rankResult
                     if rankDeficiency > 0:
-                        print(f"Found that {As} belongs to {Ls} with co-parents.")
+                        vprint(f"Found that {As} belongs to {Ls} with co-parents.",
+                                self.verbose)
                         self.l.addToLatentSet(Ls, As, rankDeficiency)
+                        anyFound = True
 
             self.l.mergeTempGroups()
             self.l.confirmTempGroups()
-            k += 1
+            r += 1
+
+            if r >= k:
+                break
+
             if k >= len(self.l.latentSet):
                 break
 
-        pprint(self.l.latentDict)
-
+        pprint(self.l.latentDict, self.verbose)
+        return anyFound
 
     # Test if Ls d-separates As and Bs
     def relationshipTest(self, A, B, L):
         pass
 
     # Algorithm to find the latent structure
-    def findLatentStructure(self):
+    def findLatentStructure(self, verbose=True):
+        self.verbose = verbose
         self.l = LatentGroups(self.g.xvars)
         run = 1
         while len(self.l.activeSet) > 0:
-            self.runStructuralRankTest(run)
-            self.runParentSetTest()
-            self.runAdjacentParentTest()
+            k = 2
+            while True:
+                test2 = self.runParentSetTest(run)
+                test1 = self.runStructuralRankTest(k, run)
+                test3 = self.runAdjacentParentTest(k, run)
+                k += 1
+                if not any([test1, test2, test3]):
+                    break
 
             # Move latentSet back into activeSet
             self.l.activeSet.update(self.l.latentSet)
             self.l.latentSet = set()
             run += 1
 
+    # Return a node and edge set for plotting with networkx
+    def reportDiscoveredGraph(self):
+        nodes = set()
+        edges = set()
+        discoveredGraph = deepcopy(self.l.latentDict)
+        while len(discoveredGraph) > 0:
+            parents, values = discoveredGraph.popitem()
+            childrenSet = values["children"]
+            for parent in parents.vars:
+                if not parent in nodes:
+                    nodes.add(parent)
+                for childGroup in childrenSet:
+                    childlatent = childGroup.isLatent()
+                    for child in childGroup.vars:
+                        if not child in nodes:
+                            nodes.add(child)
+                        edges.add((parent, child))
+        return (nodes, edges)
+
 
 if __name__ == "__main__":
     g = GaussianGraph()
-    g.add_variable("L1", None)
-    g.add_variable("L2", "L1")
-    g.add_variable("L3", "L1")
-    g.add_variable("L4", "L1")
-    g.add_variable("L5", "L1")
-    g.add_variable("L6", "L2")
-    g.add_variable("L7", ["L2", "L3"])
-    g.add_variable("L8", ["L2", "L3"])
-    g.add_variable("L9", ["L2", "L3"])
-    g.add_variable("L10", "L3")
-    g.add_variable("L11", "L4")
-    g.add_variable("L12", ["L4", "L5"])
-    g.add_variable("L13", ["L4", "L5"])
-    g.add_variable("L14", ["L4", "L5"])
-    g.add_variable("L15", "L5")
-    g.add_variable("X1", "L6")
-    g.add_variable("X2", "L6")
-    g.add_variable("X3", "L7")
-    g.add_variable("X4", ["L7", "L8"])
-    g.add_variable("X5", ["L7", "L8"])
-    g.add_variable("X6", "L9")
-    g.add_variable("X7", "L9")
-    g.add_variable("X8", ["L9", "L10"])
-    g.add_variable("X9", "L10")
-    g.add_variable("X10", "L11")
-    g.add_variable("X11", "L11")
-    g.add_variable("X12", "L12")
-    g.add_variable("X13", ["L12", "L13"])
-    g.add_variable("X14", ["L12", "L13"])
-    g.add_variable("X15", "L14")
-    g.add_variable("X16", "L14")
-    g.add_variable("X17", ["L14", "L15"])
-    g.add_variable("X18", "L15")
-
+    g.scenario2()
     model = StructureFinder(g)
-    model.findLatentStructure()
+    model.findLatentStructure(verbose=True)
 
 
