@@ -1,9 +1,14 @@
 import numpy as np
 from numpy.linalg import matrix_rank
 from math import sqrt, pow
+from math import factorial as fac
 from itertools import combinations
 from copy import deepcopy
 from pdb import set_trace
+from scipy.stats import norm
+import pandas as pd
+import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 #!!
 # A minimalGroup is an atomic group of variables
@@ -109,6 +114,8 @@ def generateSubset(vset, k=2):
         maxDim = max(d)
         while maxDim > gap:
             d.pop(maxDim)
+            if len(d) == 0:
+                return setlist
             maxDim = max(d)
 
         # Pop one MinimalGroup
@@ -186,6 +193,84 @@ def pprint(d, verbose=False):
         if verbose:
             print(text)
 
+# S: Sample Covariance
+# I, J: Disjoint index sets, |I| = |J|
+def traceMatrixCompound(S, I, J, k):
+    X = I + J # Union of I and J
+    SijInv = np.linalg.inv(S[np.ix_(X, X)])
+    Inew = [X.index(i) for i in I]
+    Jnew = [X.index(j) for j in J]
+    Sij = SijInv[np.ix_(Inew, Jnew)]
+    Sji = S[np.ix_(J, I)]
+    A = Sji @ Sij
+
+    m = A.shape[0]
+    Sum = 0
+    for Vs in combinations(range(m), k):
+        Vs = list(Vs)
+        Atemp = A[np.ix_(Vs, Vs)]
+        Sum += np.linalg.det(Atemp)
+    Sum = pow(-1, k) * Sum
+    # print(f"traceMatrixCompound is {Sum}")
+    return Sum
+
+def determinantVariance(S, I, J, n):
+    assert len(I) == len(J), "I and J must be same length"
+    m = len(I)
+    X = I + J
+    SijDet = np.linalg.det(S[np.ix_(I, J)])
+    SijijDet = np.linalg.det(S[np.ix_(X, X)])
+    #print(f"SijDet is {SijDet}")
+
+    Sum = 0
+    for k in range(m):
+        Sum += fac(m-k) * fac(n+2) / fac(n+2-k) *\
+                traceMatrixCompound(S, I, J, k)
+    firstTerm = fac(n) / fac(n-m) * pow(SijDet, 2) *\
+                    (fac(n+2)/fac(n+2-m) - fac(n)/fac(n-m))
+    secondTerm = fac(n) / fac(n-m) * SijijDet * Sum
+    variance = firstTerm + secondTerm
+
+    if variance < 0:
+        return 1
+    else:
+        return variance
+
+#def determinantVariance2(S, I, J, n):
+#    X = I + J
+#    SiiDet = np.linalg.det(S[np.ix_(I, I)])
+#    SjjDet = np.linalg.det(S[np.ix_(J, J)])
+#    SijijDet = np.linalg.det(S[np.ix_(X, X)])
+#    SijDet = np.linalg.det(S[np.ix_(I, J)])
+#    variance = ((n+2) * SiiDet * SjjDet) - (n * SijDet)\
+#                    + 3*n*pow(SijDet, 2)
+#    variance = n * (n-1) * variance
+#    return variance
+
+def determinantMean(S, I, J, n):
+    Scatter = S * (n-1)
+    x = np.linalg.det(Scatter[np.ix_(I, J)])
+    return x
+
+
+# Returns True if rejecting null hypothesis
+def determinantTest(S, I, J, n):
+    detMean = determinantMean(S, I, J, n)
+    detVar = determinantVariance(S, I, J, n)
+    zStat = detMean / sqrt(detVar)
+    #print(f"zStat is {zStat}")
+    pValue = (1 - norm.cdf(zStat)) * 2
+    #print(f"p value is {pValue}.")
+    return zStat
+    #return pValue < 0.05
+
+
+# Centre the mean of data
+def meanCentre(df):
+    n = df.shape[0]
+    return df - df.sum(axis=0)/n
+
+
 #####################################################################
 # !!graph
 #####################################################################
@@ -198,11 +283,11 @@ class GaussianGraph:
         self.phi = []
 
     def random_variance(self):
-        return np.random.normal()
+        return np.random.uniform(0.5, 2)
 
     def random_coef(self):
         coef = 0
-        while abs(coef) < 0.5:
+        while abs(coef) < 0.1:
             coef = np.random.uniform(low=-5, high=5)
         return coef
 
@@ -271,6 +356,26 @@ class GaussianGraph:
         matrix_rank(cov)
         return matrix_rank(cov)
 
+    # df: pandas dataframe
+    def sampleRankTest(self, df, A, B):
+        cols = list(df.columns)
+        I = [cols.index(a) for a in A]
+        J = [cols.index(b) for b in B]
+        n = df.shape[0]
+        data = df.to_numpy()
+        S = 1/(n-1) * data.T @ data  # Sample Covariance
+        return determinantTest(S, I, J, n)
+
+    def generateData(self, n=100):
+        df = pd.DataFrame(columns = self.xvars)
+        data = np.zeros((n, len(self.vars)))
+        for i, V in enumerate(self.vars):
+            sd = sqrt(self.phi[i])
+            noise = np.random.normal(loc=0, scale=sd, size=n)
+            data[:, i] = noise + data[:, :i] @ self.L[:i, i]
+            if V in self.xvars:
+                df[V] = data[:, i]
+        return df
 
     def scenario1(self):
         self.add_variable("L3", None)
@@ -578,14 +683,15 @@ class StructureFinder:
             return self.g.rankTest(As, Bs)
 
 
-    def runStructuralRankTest(self, k=2, run=1):
+    def runStructuralRankTest(self, run=1):
         vprint("Starting structuralRankTest...", self.verbose)
+        r = 1
         anyFound = False
         sufficientActiveVars = True
         while sufficientActiveVars:
-            for As in generateSubset(self.l.activeSet, k):
+            for As in generateSubset(self.l.activeSet, r+1):
 
-                if setLength(As) < k:
+                if setLength(As) < r+1:
                     sufficientActiveVars = False
                     break
 
@@ -595,16 +701,18 @@ class StructureFinder:
                     break
 
                 maxRank = rankResult
-                for AsPrime in generateSubset(As, k-1):
-                    rankResultPrime = self.structuralRankTest(AsPrime)
-                    if rankResultPrime > maxRank:
-                        maxRank = rankResultPrime
+                if r > 1:
+                    for AsPrime in generateSubset(As, r):
+                        rankResultPrime = self.structuralRankTest(AsPrime)
+                        if rankResultPrime > maxRank:
+                            maxRank = rankResultPrime
 
-                if maxRank == k-1:
+                if maxRank == r:
                     self.l.addToLatentSet(set(), As)
                     vprint(f"Found cluster {As}.", self.verbose)
                     anyFound = True
 
+            r += 1
             self.l.mergeTempGroups(run)
             self.l.confirmTempGroups(run)
         pprint(self.l.latentDict, self.verbose)
@@ -710,19 +818,20 @@ class StructureFinder:
 
     # k: Number of variable to test
     # r: Number of MinimalGroup Latents to test for as Co-Parent
-    def runAdjacentParentTest(self, k=2, run=1):
+    def runAdjacentParentTest(self, run=1):
         vprint("Starting adjacentParentTest...", self.verbose)
+        k = 2
         r = 1
         sufficientVars = True
         anyFound = False
 
         while sufficientVars:
-            for As in generateSubset(self.l.activeSet, r):
-                if setLength(As) < r:
+            for As in generateSubset(self.l.activeSet, k):
+                if setLength(As) < k:
                     sufficientVars = False
                     break
 
-                for Ls in combinations(self.l.latentSet, k):
+                for Ls in combinations(self.l.latentSet, r):
                     Ls = set(Ls)
 
                     if len(Ls) == 0:
@@ -744,11 +853,7 @@ class StructureFinder:
             self.l.mergeTempGroups()
             self.l.confirmTempGroups()
             r += 1
-
-            if r >= k:
-                break
-
-            if k >= len(self.l.latentSet):
+            if r >= len(self.l.latentSet):
                 break
 
         pprint(self.l.latentDict, self.verbose)
@@ -764,14 +869,11 @@ class StructureFinder:
         self.l = LatentGroups(self.g.xvars)
         run = 1
         while len(self.l.activeSet) > 0:
-            k = 2
-            while True:
-                test2 = self.runParentSetTest(run)
-                test1 = self.runStructuralRankTest(k, run)
-                test3 = self.runAdjacentParentTest(k, run)
-                k += 1
-                if not any([test1, test2, test3]):
-                    break
+            test1 = self.runStructuralRankTest(run)
+            test2 = self.runParentSetTest(run)
+            test3 = self.runAdjacentParentTest(run)
+            if not any([test1, test2, test3]):
+                break
 
             # Move latentSet back into activeSet
             self.l.activeSet.update(self.l.latentSet)
@@ -801,7 +903,21 @@ class StructureFinder:
 if __name__ == "__main__":
     g = GaussianGraph()
     g.scenario2()
-    model = StructureFinder(g)
-    model.findLatentStructure(verbose=True)
+
+    zlist = []
+    for i in tqdm(range(500)):
+        df = g.generateData(500)
+        df = meanCentre(df)
+        #z = g.sampleRankTest(df, ["X3", "X4", "X5"], ["X1", "X6", "X9"])
+        z = g.sampleRankTest(df, ["X1", "X3", "X6"], ["X2", "X4", "X7"])
+        #z = g.sampleRankTest(df, ["X1", "X3"], ["X2", "X4"])
+        zlist.append(z)
+    plt.hist(zlist, bins=50)
+    plt.savefig("test.png")
+
+
+    #g.scenario2()
+    #model = StructureFinder(g)
+    #model.findLatentStructure(verbose=True)
 
 
