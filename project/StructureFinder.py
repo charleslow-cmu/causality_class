@@ -1,7 +1,11 @@
 from LatentGroups import LatentGroups
 from pdb import set_trace
 from misc import *
-from math import floor
+from math import floor, sqrt
+import numpy as np
+from scipy.stats import norm
+import operator
+from functools import reduce
 
 class StructureFinder:
 
@@ -10,6 +14,7 @@ class StructureFinder:
         self.l = None  # LatentGroups object
         self.verbose = False
         self.alpha = alpha # Critical value for testing
+        self.covList = []
 
     # Sample of generated data from g
     def addSample(self, df):
@@ -18,15 +23,35 @@ class StructureFinder:
         data = df.to_numpy()
         self.S = 1/(n-1) * data.T @ data  # Sample Covariance
 
-    # df: pandas dataframe
-    # m: Number of independent tests
+    # Bootstrap sample our data and calculate covariance matrix
+    # k times
+    def prepareBootstrapCovariances(self, k=10):
+        for _ in range(k):
+            cov = bootStrapCovariance(self.df)
+            self.covList.append(cov)
+
+    # A, B: Columns for testing
     # Returns pValue
     def sampleRankTest(self, A, B):
+        assert len(self.covList) > 0, "Need to Prepare Covariances"
         cols = list(self.df.columns)
         I = [cols.index(a) for a in A]
         J = [cols.index(b) for b in B]
         n = self.df.shape[0]
-        pValue = determinantTest(self.S, I, J, n)
+
+        detList = []
+        k = len(self.covList)
+        for S in self.covList:
+            SIJ = S[np.ix_(I, J)]
+            Sigma = np.linalg.svd(SIJ, compute_uv=False, full_matrices=False)
+            det = reduce(operator.mul, Sigma, 1)
+            detList.append(det)
+
+        sampleMean = sum(detList) / k
+        sampleVar = 1/(k-1) * sum([pow(det - sampleMean, 2) for 
+                                    det in detList])
+        testStat = abs(sampleMean) / sqrt(sampleVar)
+        pValue = (1 - norm.cdf(testStat)) * 2
         return pValue
 
 
@@ -85,20 +110,21 @@ class StructureFinder:
         anyFound = False
         sufficientActiveVars = True
         while sufficientActiveVars:
-            for As in generateSubset(self.l.activeSet, r+1):
+            for Vs in generateSubset(self.l.activeSet, r+1):
 
-                if setLength(As) < r+1:
+                if setLength(Vs) < r+1:
                     sufficientActiveVars = False
                     break
 
-                rankDeficient = self.structuralRankTest(As, run, sample)
+                rankDeficient = self.structuralRankTest(Vs, run, sample)
+
                 if rankDeficient is None:
                     sufficientActiveVars = False
                     break
 
                 if rankDeficient:
-                    self.l.addToLatentSet(set(), As)
-                    vprint(f"Found cluster {As}.", self.verbose)
+                    self.l.addToLatentSet(set(), Vs)
+                    vprint(f"Found cluster {Vs}.", self.verbose)
                     anyFound = True
 
             r += 1
@@ -168,7 +194,10 @@ class StructureFinder:
             vprint("set is too small", self.verbose)
             return set()
 
-        rankDeficient = self.parentSetTest(Ls, V, sample)
+        try:
+            rankDeficient = self.parentSetTest(Ls, V, sample)
+        except:
+            import IPython; IPython.embed(); exit(1)
         if rankDeficient is None:
             vprint("Result is None", self.verbose)
             discovered = []
@@ -226,8 +255,8 @@ class StructureFinder:
 
         # Must not use all latent variables
         # Leave some extra for use in control set Bs
-        totalLatents = len(self.l.latentSet)
-        if len(Ls) + len(Vs) - 1 > totalLatents:
+        remainingLs = setDifference(self.l.latentSet, Ls)
+        if len(Ls) + len(Vs) > len(remainingLs) + 1:
             return None
 
         # Assemble representatives for Ls
@@ -250,8 +279,8 @@ class StructureFinder:
         # 1. Other latent variables available
         # 2. All other active vars (excluding Vs)
         Cs = set()
-        remainingLs = self.l.latentSet - Ls
-        for L in remainingLs.union(self.l.activeSet - Vs):
+        remainingActive = self.l.activeSet - Vs
+        for L in remainingLs.union(remainingActive):
             Cs.update(self.l.pickRepresentativeMeasures(L))
 
         Bs = self.getMeasuredVarList(Bs)

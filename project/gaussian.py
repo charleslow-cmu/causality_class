@@ -12,7 +12,7 @@ from tqdm import tqdm
 import os
 
 # Function to run trials on a scenario
-def runTests(scenario, nTrials, sampleSizes):
+def runTests(scenario, nTrials, sampleSizes, k=10):
     for sampleSize in sampleSizes:
         print(f"Running for Sample Size {sampleSize}")
         scorelist = []
@@ -20,26 +20,26 @@ def runTests(scenario, nTrials, sampleSizes):
         while trial < nTrials:
 
             g = scenario()
-            model = StructureFinder(g, alpha=0.05)
+            model = StructureFinder(g, alpha=0.01)
             model.findLatentStructure(verbose=False, sample=False)
             reference = model.l.latentDict
 
             df = g.generateData(n=sampleSize)
             model.addSample(df)
+            model.prepareBootstrapCovariances(k=k)
 
             try:
                 model.findLatentStructure(verbose=False, sample=True)
                 score = compareStructure(model.l.latentDict, reference)
                 scorelist.append(score)
-            except:
-                print("An Exception Occurred!")
-                scorelist.append(0)
 
-            trial += 1
-            if trial % 10 == 0:
-                percent = sum([score==1 for score in scorelist]) \
-                                    / len(scorelist)
-                print(f"% Correct: {percent*100:.1f}%")
+                trial += 1
+                if trial % 1 == 0:
+                    percent = sum([score==1 for score in scorelist]) \
+                                        / len(scorelist)
+                    print(f"% Correct: {percent*100:.1f}%")
+            except:
+                pass
 
         percent = sum([score==1 for score in scorelist]) / len(scorelist)
         print(f"Percent correct for sample {sampleSize}: {percent*100:.1f}%")
@@ -55,10 +55,7 @@ from scenarios import *
 if __name__ == "__main__":
 
     # Run Trials
-    #nTrials = 100
-    #sampleSizes = [500, 1000, 2000, 5000]
-    #runTests(scenario3, nTrials, sampleSizes)
+    nTrials = 10
+    sampleSizes = [500, 1000]
+    runTests(scenario1, nTrials, sampleSizes, k=100)
 
-    #g = scenario3()
-    #model = StructureFinder(g, alpha=0.05)
-    #model.findLatentStructure(verbose=True, sample=False)

@@ -268,3 +268,13 @@ def bonferroniHolmTest(plist, alpha):
     #print(plist[0])
     return not any(tests)
 
+# Given data df, bootstrap sample and make new covariance
+def bootStrapCovariance(data):
+    n = data.shape[0]
+    index = np.random.randint(low=0, high=n, size=n)
+    bootstrap = data.values[index]
+    cov = bootstrap.T @ bootstrap
+    return cov
+
+
+

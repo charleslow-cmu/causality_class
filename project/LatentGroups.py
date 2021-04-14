@@ -1,5 +1,6 @@
 from MinimalGroup import MinimalGroup
 from misc import *
+from pdb import set_trace
 
 # Class to store discovered latent groups
 class LatentGroups():
@@ -40,6 +41,7 @@ class LatentGroups():
                 "children": As,
                 "subgroups": subgroups
                 }
+
 
         # Remove from Active Set
         # self.activeSet = setDifference(self.activeSet, As)
@@ -155,7 +157,10 @@ class LatentGroups():
         # Add remaining from own children
         #n = len(L) - setLength(values["subgroups"])
         availableXs = values["children"] - usedXs
-        A.add(next(iter(availableXs)))
+        for V in availableXs:
+            if not V.isLatent():
+                A.add(V)
+                break
         return A
 
     # As opposed to pickRepresentativeMeasures, pickAllMeasures 
