@@ -79,13 +79,11 @@ class GaussianGraph:
 
     # The main workhorse method
     # Return True if rank is not full
-    def rankTest(self, A, B):
+    def rankTest(self, A, B, rk):
         A = sorted(A)
         B = sorted(B)
         cov = self.subcovariance(A, B)
-        rk = matrix_rank(cov)
-        return rk < min(len(A), len(B))
-
+        return matrix_rank(cov) <= rk
 
     def generateData(self, n=100):
         df = pd.DataFrame(columns = self.xvars)

@@ -1,5 +1,17 @@
 from GaussianGraph import GaussianGraph
 
+
+def scenario0():
+    g = GaussianGraph()
+    g.add_variable("L1", None)
+    g.add_variable("L2", ["L1"])
+
+    g.add_variable("X1", "L1")
+    g.add_variable("X2", "L1")
+    g.add_variable("X3", "L2")
+    g.add_variable("X4", "L2")
+    return g
+
 def scenario1():
     g = GaussianGraph()
     g.add_variable("L1", None)

@@ -273,8 +273,56 @@ def bootStrapCovariance(data):
     n = data.shape[0]
     index = np.random.randint(low=0, high=n, size=n)
     bootstrap = data.values[index]
-    cov = bootstrap.T @ bootstrap
+    cov = 1/(n-1) * bootstrap.T @ bootstrap
     return cov
+
+
+# Calculate the Asymptotic Covariance Matrix of subcovariance
+# data: n x d is our raw data
+# Omega: pq x pq
+def asymptoticCov(data, pcols, qcols, normal=False):
+
+    # Centre the data
+    data = data - np.mean(data, axis=0)
+    cols = sorted(pcols + qcols)
+    data = data[:, cols]
+    pcols = [cols.index(i) for i in pcols]
+    qcols = [cols.index(i) for i in qcols]
+
+    # Calculate Sample Covariance
+    # B is estimator for subcovariance matrix
+    # We are interested in rank of B
+    n = data.shape[0]
+    p = len(pcols)
+    q = len(qcols)
+
+    Omega = np.zeros((p*q, p*q))
+    if not normal:
+        for e in range(p):
+            for f in range(q):
+                for g in range(p):
+                    for h in range(q):
+                        s_efgh = 1/(n-1) * np.sum(data[:,e] * data[:,f] *\
+                                            data[:,g] * data[:,h])
+                        s_ef = 1/(n-1) * np.sum(data[:,e] * data[:,f])
+                        s_gh = 1/(n-1) * np.sum(data[:,g] * data[:,h])
+                        row = e + f * p
+                        col = g + h * p
+                        Omega[row, col] = s_efgh - s_ef * s_gh
+
+    else:
+        for e in range(p):
+            for f in range(q):
+                for g in range(p):
+                    for h in range(q):
+                        s_eg = 1/(n-1) * np.sum(data[:,e] * data[:,g])
+                        s_fh = 1/(n-1) * np.sum(data[:,f] * data[:,h])
+                        s_eh = 1/(n-1) * np.sum(data[:,e] * data[:,h])
+                        s_fg = 1/(n-1) * np.sum(data[:,f] * data[:,g])
+                        row = e + f * p
+                        col = g + h * p
+                        Omega[row, col] = s_eg * s_fh - s_eh * s_fg
+    return Omega
 
 
 
