@@ -1,6 +1,8 @@
 from MinimalGroup import MinimalGroup
 from misc import *
 from pdb import set_trace
+from copy import deepcopy
+import IPython
 
 # Class to store discovered latent groups
 class LatentGroups():
@@ -13,117 +15,128 @@ class LatentGroups():
         self.latentDictTemp = {}
 
     # Create a new Minimal Latent Group
-    # Ls: Existing set of MinimalGroups of latent variables
     # As: Set of MinimalGroups to add as children
     # If Ls is empty, we simply create new latent variables
-    def addToLatentSet(self, Ls, As, rankDeficiency=1):
+    def addToLatentSet(self, Vs, latentSize=1):
 
-        # Create new Latent Variables
-        sizeL = setLength(As) - rankDeficiency
+        # If Vs overlap with an earlier cluster, add to it
+        for parent, values in self.latentDictTemp.items():
+            children = values["children"]
+            if len(children.intersection(Vs)) > 0:
+                values["children"] = children.union(Vs)
+
+                # Create a subgroup pointer for each latent var
+                for V in Vs:
+                    if V.isLatent():
+                        values["subgroups"].update([V])
+
+                # Update the entry
+                self.latentDictTemp[parent] = values
+                return
+
+
+        # If no overlap, create new Latent Variables
         newLlist = []
-        for _ in range(sizeL):
+        for _ in range(latentSize):
             newLlist.append(f"L{self.i}")
             self.i += 1
         newParents = MinimalGroup(newLlist)
 
-        # Append existing Ls to newParents
-        for L in Ls:
-            newParents.union(L)
-
-        # Create subgroups
-        subgroups = Ls
-        for A in As:
-            if A.isLatent():
-                subgroups.add(A)
+        # Create a subgroup pointer for each latent var
+        subgroups = set()
+        for V in Vs:
+            if V.isLatent():
+                subgroups.update([V])
 
         # Create new entry
         self.latentDictTemp[newParents] = {
-                "children": As,
+                "children": Vs,
                 "subgroups": subgroups
                 }
 
 
-        # Remove from Active Set
-        # self.activeSet = setDifference(self.activeSet, As)
-
-
     # Merge overlapping groups in dTemp
-    def mergeTempGroups(self, run=1):
-        if len(self.latentDictTemp) == 0:
-            return
+    #def mergeTempGroups(self, run=1):
 
-        # Ps for parent set, Cs for children set
-        # Each p and c are frozensets of variables
-        # Values of inv_list becomes a list of frozensets
-        inv_list = {}
-        for P, values in self.latentDictTemp.items():
-            Cs = values["children"]
-            for C in Cs:
-                inv_list[C] = inv_list.get(C, set()).union([P])
+    #    temp = deepcopy(self)
 
-        # Merge Ps with overlapping elements in the same group
-        foundGroups = []
-        for Ps in inv_list.values():
-            if len(Ps) > 1:
-                if len(foundGroups) == 0:
-                    foundGroups.append(Ps)
-                    continue
-    
-                for i, group in enumerate(foundGroups):
-                    if len(Ps.intersection(group)) > 0:
-                        foundGroups[i] = foundGroups[i].union(Ps)
-                    else:
-                        foundGroups.append(Ps)
+    #    if len(self.latentDictTemp) == 0:
+    #        return
 
-        # foundGroups is now a list of parentSets with overlapping
-        # children
-        # Need to do a pairwise merge
-        for group in foundGroups:
-            mergeMap = self.getMergeMap(group)
-            for oldp, p in mergeMap.items():
-                values = self.latentDictTemp.pop(oldp)
-                if not p in self.latentDictTemp:
-                    self.latentDictTemp[p] = {}
-                    self.latentDictTemp[p]["children"] = set()
-                    self.latentDictTemp[p]["subgroups"] = set()
-                self.latentDictTemp[p]["children"].update(values["children"])
-                self.latentDictTemp[p]["subgroups"].update(values["subgroups"])
+    #    # Ps for parent set, Cs for children set
+    #    # Values of inv_list becomes a list of MinimalGroups
+    #    inv_list = {}
+    #    for P, values in self.latentDictTemp.items():
+    #        Cs = values["children"]
+    #        for C in Cs:
+    #            inv_list[C] = inv_list.get(C, set()).union([P])
+
+    #    # Merge Ps with overlapping elements in the same group
+    #    foundGroups = []
+    #    for Ps in inv_list.values():
+    #        if len(Ps) > 1:
+    #            if len(foundGroups) == 0:
+    #                foundGroups.append(Ps)
+    #                continue
+    #
+    #            for i, group in enumerate(foundGroups):
+    #                if len(Ps.intersection(group)) > 0:
+    #                    foundGroups[i] = foundGroups[i].union(Ps)
+    #                else:
+    #                    foundGroups.append(Ps)
+
+    #    # foundGroups is now a list of parentSets with overlapping
+    #    # children
+    #    # Need to do a pairwise merge
+    #    try:
+    #        for group in foundGroups:
+    #            mergeMap = self.getMergeMap(group)
+    #            for oldp, p in mergeMap.items():
+    #                values = self.latentDictTemp.pop(oldp)
+    #                if not p in self.latentDictTemp:
+    #                    self.latentDictTemp[p] = {}
+    #                    self.latentDictTemp[p]["children"] = set()
+    #                    self.latentDictTemp[p]["subgroups"] = set()
+    #                self.latentDictTemp[p]["children"].update(values["children"])
+    #                self.latentDictTemp[p]["subgroups"].update(values["subgroups"])
+    #    except:
+    #        IPython.embed();exit(1)
 
     # Return a 1-1 mapping from original group to new group
     # group: set of MinimalGroups of latent vars
-    def getMergeMap(self, group):
-        mergeMap = {}
+    #def getMergeMap(self, group):
+    #    mergeMap = {}
 
-        # Find lowest keys
-        k = len(next(iter(group)))
-        nums = []
-        for A in group:
-            A1, A2 = self.findMergeableVars(A)
-            Anums = [int(x[1:]) for x in A2]
-            nums.extend(Anums)
-        lowestKeys = sorted(nums)[0:k]
-        lowestKeys = [f"L{x}" for x in lowestKeys]
+    #    # Find lowest keys
+    #    k = len(next(iter(group)))
+    #    nums = []
+    #    for A in group:
+    #        A1, A2 = self.findMergeableVars(A)
+    #        Anums = [int(x[1:]) for x in A2]
+    #        nums.extend(Anums)
+    #    lowestKeys = sorted(nums)[0:k]
+    #    lowestKeys = [f"L{x}" for x in lowestKeys]
 
-        # Create new keys
-        for A in group:
-            A1, A2 = self.findMergeableVars(A)
-            newkey = A1.union(lowestKeys)
-            mergeMap[A] = MinimalGroup(list(newkey))
-        return mergeMap
+    #    # Create new keys
+    #    for A in group:
+    #        A1, A2 = self.findMergeableVars(A)
+    #        newkey = A1.union(lowestKeys)
+    #        mergeMap[A] = MinimalGroup(list(newkey))
+    #    return mergeMap
 
     # Given a set of MinimalGroups of latent vars, find
     # subgroups which are not minimal groups.
-    def findMergeableVars(self, A):
-        A1 = set() # Non-mergeable
-        A2 = set() # Mergeable
-        for P in A.vars:
+    #def findMergeableVars(self, A):
+    #    A1 = set() # Non-mergeable
+    #    A2 = set() # Mergeable
+    #    for P in A.vars:
 
-            # Not mergeable if already confirmed in latentDict
-            if P in self.latentDict:
-                A1.update([P])
-            else:
-                A2.update([P])
-        return A1, A2
+    #        # Not mergeable if already confirmed in latentDict
+    #        if P in self.latentDict:
+    #            A1.update([P])
+    #        else:
+    #            A2.update([P])
+    #    return A1, A2
 
 
     # Move elements in latentDictTemp to latentDict

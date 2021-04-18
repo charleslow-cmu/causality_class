@@ -31,6 +31,7 @@ def scenario1():
     g.add_variable("X8", ["L4", "L5"])
     g.add_variable("X9", "L6")
     g.add_variable("X10", "L6")
+    g.add_variable("X11", "L6")
     return g
 
 def scenario2():

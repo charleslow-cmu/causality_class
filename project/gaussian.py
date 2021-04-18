@@ -12,68 +12,68 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import os
 
+from GaussianGraph import GaussianGraph
+from MinimalGroup import MinimalGroup
+from LatentGroups import LatentGroups
+from StructureFinder import StructureFinder
+from RankTester import RankTester
+from StructureComparer import StructureComparer
+from misc import *
+from scenarios import *
+
 # Function to run trials on a scenario
-def runTests(scenario, nTrials, sampleSizes, k=10, alpha=0.01):
+def runTests(scenario, nTrials, sampleSizes, alpha=0.01, verbose=False):
     for sampleSize in sampleSizes:
         print(f"Running for Sample Size {sampleSize}")
         scorelist = []
         trial = 0
         while trial < nTrials:
 
+            # Create the reference solution
             g = scenario()
-            model = StructureFinder(g, alpha=alpha)
-            model.findLatentStructure(verbose=False, sample=False)
-            reference = model.l.latentDict
-
+            refModel = StructureFinder(g, alpha=alpha)
+            refModel.findLatentStructure(verbose=verbose, sample=False)
+            exit(1)
+            
+            # Run our model on the sample
+            testModel = StructureFinder(g, alpha=alpha)
             df = g.generateData(n=sampleSize)
-            model.addSample(df)
-            model.prepareBootstrapCovariances(k=k)
+            testModel.addSample(df)
+            testModel.findLatentStructure(verbose=verbose, sample=False)
+            comparer = StructureComparer(refModel.l, testModel.l)
+            score = comparer.getScore()
+            scorelist.append(score)
 
-            try:
-                model.findLatentStructure(verbose=False, sample=True)
-                score = compareStructure(model.l.latentDict, reference)
-                scorelist.append(score)
-                pprint(model.l.latentDict, verbose=True)
-
-                trial += 1
-                if trial % 1 == 0:
-                    percent = sum([score==1 for score in scorelist]) \
-                                        / len(scorelist)
-                    print(f"% Correct: {percent*100:.1f}%")
-            except:
-                pass
+            trial += 1
+            if trial % 5 == 0:
+                percent = sum([score==1 for score in scorelist]) \
+                                    / len(scorelist)
+                print(f"% Correct: {percent*100:.1f}%")
 
         percent = sum([score==1 for score in scorelist]) / len(scorelist)
         print(f"Percent correct for sample {sampleSize}: {percent*100:.1f}%")
 
 
-from GaussianGraph import GaussianGraph
-from MinimalGroup import MinimalGroup
-from LatentGroups import LatentGroups
-from StructureFinder import StructureFinder
-from RankTester import RankTester
-from misc import *
-from scenarios import *
 
 
 if __name__ == "__main__":
 
     # Run Trials
-    #nTrials = 100
-    #sampleSizes = [1000]
-    #runTests(scenario1, nTrials, sampleSizes, k=1000, alpha=0.05)
+    nTrials = 1
+    sampleSizes = [5000]
+    runTests(scenario4, nTrials, sampleSizes, alpha=0.1, verbose=True)
 
     # Testing
-    k = 1000
-    reject = 0
-    for _ in range(100):
-        g = scenario1()
-        df = g.generateData(500)
+    #k = 1000
+    #reject = 0
+    #for _ in range(100):
+    #    g = scenario1()
+    #    df = g.generateData(500)
 
-        rankTester = RankTester(df, trials=1000, normal=True, alpha=0.05)
-        test = rankTester.test([0,5,9], [1,6,4], r=2)
-        reject += test
-    print(reject)
+    #    rankTester = RankTester(df, trials=1000, normal=True, alpha=0.05)
+    #    test = rankTester.test([0,5,9], [1,6,4], r=2)
+    #    reject += test
+    #print(reject)
 
     #plt.hist(detList, bins=500, density=True)
     #x = np.arange(0, 10, .01)

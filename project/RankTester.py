@@ -22,7 +22,11 @@ class RankTester:
     # Returns True if null is rejected
     def test(self, pcols, qcols, r=1):
 
-        assert len(pcols) >= len(qcols), "Must have more p columns"
+        if len(pcols) > len(qcols):
+            temp = pcols
+            pcols = qcols
+            qcols = temp
+
         T = self.n
         B = self.S[np.ix_(pcols, qcols)]
         #print("B is:")
