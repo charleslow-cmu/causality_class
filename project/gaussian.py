@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import os
 
+
 from GaussianGraph import GaussianGraph
 from MinimalGroup import MinimalGroup
 from LatentGroups import LatentGroups
@@ -23,45 +24,56 @@ from scenarios import *
 
 # Function to run trials on a scenario
 def runTests(scenario, nTrials, sampleSizes, alpha=0.01, verbose=False):
+    scores = []
     for sampleSize in sampleSizes:
         print(f"Running for Sample Size {sampleSize}")
         scorelist = []
         trial = 0
-        while trial < nTrials:
+        for trial in tqdm(range(nTrials)):
 
             # Create the reference solution
             g = scenario()
             refModel = StructureFinder(g, alpha=alpha)
             refModel.findLatentStructure(verbose=verbose, sample=False)
-            exit(1)
             
             # Run our model on the sample
             testModel = StructureFinder(g, alpha=alpha)
             df = g.generateData(n=sampleSize)
             testModel.addSample(df)
-            testModel.findLatentStructure(verbose=verbose, sample=False)
+            testModel.findLatentStructure(verbose=verbose, sample=True)
             comparer = StructureComparer(refModel.l, testModel.l)
             score = comparer.getScore()
             scorelist.append(score)
 
-            trial += 1
-            if trial % 5 == 0:
-                percent = sum([score==1 for score in scorelist]) \
-                                    / len(scorelist)
-                print(f"% Correct: {percent*100:.1f}%")
-
-        percent = sum([score==1 for score in scorelist]) / len(scorelist)
-        print(f"Percent correct for sample {sampleSize}: {percent*100:.1f}%")
-
-
-
+            #if trial % 5 == 0:
+            #    print(f"Avg Score: {sum(scorelist) / trial:.6f}")
+        mean = sum(scorelist) / nTrials
+        sd = 1/nTrials * sum([pow(x - mean, 2) for x in scorelist])
+        print(f"Avg Score: {mean:.6f}")
+        scores.append({"mean": mean, "sd": 2*sd, "n": sampleSize})
+    return scores
+        
 
 if __name__ == "__main__":
 
     # Run Trials
-    nTrials = 1
-    sampleSizes = [5000]
-    runTests(scenario4, nTrials, sampleSizes, alpha=0.1, verbose=True)
+    nTrials = 10
+    sampleSizes = [100, 500, 1000, 2000, 5000]
+    scores = runTests(scenario1, nTrials, sampleSizes, alpha=0.05, verbose=False)
+
+    df = pd.DataFrame(scores)
+    df.to_csv("temp.csv", index=False)
+
+    df = pd.read_csv("temp.csv")
+    df["n"] = df["n"].astype(str)
+    plt.plot(df.n, df["mean"], color="b")
+    plt.errorbar(df.n, df["mean"], df.sd, color="b")
+    plt.scatter(df.n, df["mean"], marker="o", color="b", s=50)
+    plt.savefig("test.png")
+
+
+
+
 
     # Testing
     #k = 1000

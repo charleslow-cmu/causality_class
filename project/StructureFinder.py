@@ -63,7 +63,8 @@ class StructureFinder:
     def structuralRankTest(self, Vs, k, run=1, sample=False):
 
         remainingVs = setDifference(self.l.activeSet, Vs)
-        if len(Vs) > len(remainingVs):
+
+        if setLength(Vs) > setLength(remainingVs) + setLength(self.l.latentSet):
             return None
 
         As = set()
@@ -73,6 +74,9 @@ class StructureFinder:
                 
         Bs = set()
         for V in remainingVs:
+            Bs.update(self.l.pickAllMeasures(V))
+
+        for V in self.l.latentSet:
             Bs.update(self.l.pickAllMeasures(V))
         Bs = self.getMeasuredVarList(Bs)
 
@@ -89,7 +93,7 @@ class StructureFinder:
         anyFound = False
 
         # Terminate if not enough active variables
-        if k >= len(self.l.activeSet):
+        if k > setLength(self.l.activeSet):
             insufficientVars = True
             return (anyFound, insufficientVars)
         else:
@@ -97,6 +101,9 @@ class StructureFinder:
 
         for Vs in generateSubset(self.l.activeSet, k):
             Vs = set(Vs)
+
+            if not Vs <= self.l.activeSet:
+                continue
 
             if setLength(Vs) < k:
                 break
@@ -113,8 +120,8 @@ class StructureFinder:
                 vprint(f"Found cluster {Vs}.", self.verbose)
                 anyFound = True
 
-        self.l.confirmTempGroups(run)
-        pprint(self.l.latentDict, self.verbose)
+        #self.l.confirmTempGroups(run)
+        #pprint(self.l.latentDict, self.verbose)
         return (anyFound, insufficientVars)
 
 
@@ -245,20 +252,24 @@ class StructureFinder:
                 testlist.append(anyFound1)
                 #test2 = self.runParentSetTest(run, sample)
 
-                # Move latentSet back into activeSet
-                self.l.activeSet.update(self.l.latentSet)
-                self.l.latentSet = set()
                 k += 1
 
                 # Start again at smallest Cardinality
-                if anyFound1:
-                    break
+                #if anyFound1:
+                #    break
 
                 if insufficientVars1:
                     break
 
             if not any(testlist):
                 break
+
+            # self.l.confirmTempGroups()
+            pprint(self.l.latentDict, self.verbose)
+
+            # Move latentSet back into activeSet
+            self.l.activeSet.update(self.l.latentSet)
+            self.l.latentSet = set()
 
     # Return a node and edge set for plotting with networkx
     def reportDiscoveredGraph(self):

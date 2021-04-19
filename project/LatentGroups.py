@@ -20,7 +20,7 @@ class LatentGroups():
     def addToLatentSet(self, Vs, latentSize=1):
 
         # If Vs overlap with an earlier cluster, add to it
-        for parent, values in self.latentDictTemp.items():
+        for parent, values in self.latentDict.items():
             children = values["children"]
             if len(children.intersection(Vs)) > 0:
                 values["children"] = children.union(Vs)
@@ -31,7 +31,7 @@ class LatentGroups():
                         values["subgroups"].update([V])
 
                 # Update the entry
-                self.latentDictTemp[parent] = values
+                self.latentDict[parent] = values
                 return
 
 
@@ -49,10 +49,14 @@ class LatentGroups():
                 subgroups.update([V])
 
         # Create new entry
-        self.latentDictTemp[newParents] = {
+        self.latentDict[newParents] = {
                 "children": Vs,
                 "subgroups": subgroups
                 }
+
+        # Remove from activeSet
+        self.activeSet = setDifference(self.activeSet, Vs)
+        self.latentSet.add(newParents)
 
 
     # Merge overlapping groups in dTemp
@@ -146,9 +150,9 @@ class LatentGroups():
             self.latentDict[p] = values
 
             # Update V by grouping variables
-            self.activeSet = setDifference(self.activeSet, 
-                                    values["children"])
-            self.latentSet.add(p)
+            #self.activeSet = setDifference(self.activeSet, 
+            #                        values["children"])
+            #self.latentSet.add(p)
 
 
     # Recursive search for one X per latent var in minimal group L
