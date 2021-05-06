@@ -13,7 +13,7 @@ class StructureComparer:
         self.X = reference.X
         self.n = len(self.X)
 
-    def getClusterings(self, l):
+    def getSingleClustering(self, l):
         l = deepcopy(l)
         Clist = []
 
@@ -39,6 +39,29 @@ class StructureComparer:
 
         l.activeSet = newActiveSet
         return C
+
+    def getGroups(self, l):
+        l = deepcopy(l)
+        C= []
+
+        # Get strayChildren Groups
+        while len(l.strayChildren) > 0:
+            parents, values = l.strayChildren.popitem()
+            Vs = values["children"]
+            for L in values["subgroups"]:
+                Vs.update(l.pickAllMeasures(L))
+            C.append(Vs)
+
+        # Get normal groups
+        while len(l.latentDict) > 0:
+            parents, values = l.latentDict.popitem()
+            Vs = set()
+            for V in values["children"]:
+                Vs.update(l.pickAllMeasures(V))
+            C.append(Vs)
+
+        return C
+
 
 
     # i refers to the group index 
@@ -74,10 +97,38 @@ class StructureComparer:
     def makeMinGroup(self, Xs):
         return set([MinimalGroup(x) for x in Xs])
 
+    # A measure of similarity between V1 and V2
+    def smallestContainingSet(self, C, V1, V2):
+        d = self.n
+        for group in C:
+            if V1 in group and V2 in group:
+                l = len(group)
+                if l < d:
+                    d = l
+        return d/self.n
+
+    def makeDistanceMatrix(self, l, C):
+        print(C)
+        Xs = l.X
+        dist = np.zeros((len(Xs), len(Xs)))
+        for i, Xi in enumerate(Xs):
+            for j, Xj in enumerate(Xs):
+                if i == j:
+                    continue
+                dist[i,j] = self.smallestContainingSet(C, Xi, Xj)
+        return dist
+
     def getScore(self):
-        C = self.getClusterings(self.reference)
-        Cprime = self.getClusterings(self.test)
-        score = self.mutualInfo(C, Cprime)
+        #C2 = [set([x for x in self.reference.X])]
+        #C2 = [set([x]) for x in self.reference.X]
+        #print(C2)
+        C1 = self.getGroups(self.reference)
+        C2 = self.getGroups(self.test)
+        dist1 = self.makeDistanceMatrix(self.reference, C1)
+        dist2 = self.makeDistanceMatrix(self.test, C2)
+        norm1 = np.linalg.norm(dist1, ord="fro")
+        norm2 = np.linalg.norm(dist2, ord="fro")
+        score = 1 - np.linalg.norm(dist1 - dist2, ord="fro") / (norm1*norm2)
         return score
 
 

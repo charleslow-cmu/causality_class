@@ -18,7 +18,6 @@ class StructureFinder:
         self.alpha = alpha # Critical value for testing
         self.covList = []
 
-
     # Sample of generated data from g
     def addSample(self, df):
         self.df = df
@@ -120,121 +119,84 @@ class StructureFinder:
                 vprint(f"Found cluster {Vs}.", self.verbose)
                 anyFound = True
 
-        #self.l.confirmTempGroups(run)
-        #pprint(self.l.latentDict, self.verbose)
         return (anyFound, insufficientVars)
 
 
     # Test if V is children of Ls
     # V: a MinimalGroup
-    #def parentSetTest(self, Ls, V, sample=False):
-    #    #print(f"Testing for {V} against {Ls}")
+    def parentSetTest(self, Ls, V, run=1, sample=False):
+        #print(f"Testing for {V} against {Ls}")
 
-    #    # Must not use all latent variables
-    #    # Leave some extra for use in control set Bs
-    #    totalLatents = len(self.l.latentSet)
-    #    if len(Ls) >= totalLatents:
-    #        return None
+        k = setLength(Ls)
+        remainingLs = self.l.latentSet - Ls
+        remainingVs = self.l.activeSet - set([V])
 
-    #    k = len(V)
-    #    As = set()
-    #    for L in Ls:
-    #        As.update(self.l.pickRepresentativeMeasures(L))
+        As = set()
+        for L in Ls:
+            As.update(self.l.pickRepresentativeMeasures(L))
+        try:
+            assert len(As) == setLength(Ls), "As must be same length as Ls"
+        except:
+            set_trace()
 
-    #    if V.isLatent():
-    #        As.update(self.l.pickRepresentativeMeasures(V))
-    #    else:
-    #        assert k == 1, "Measured Var of length > 1."
-    #        As.add(V)
+        if V.isLatent():
+            As.update(self.l.pickAllMeasures(V))
+        else:
+            As.add(V)
 
-    #    # Construct Bs set
-    #    Bs = set()
-    #    for L in Ls:
-    #        Bs.update(self.l.pickRepresentativeMeasures(L, usedXs=As))
+        Bs = set()
+        for L in Ls:
+            Bs.update(self.l.pickRepresentativeMeasures(L, usedXs=As))
 
-    #    # Cs is all remaining variables
-    #    Cs = self.getMeasuredVarList(self.l.getAllOtherMeasuresFromXs(
-    #                As.union(Bs)))
-    #    Bs = self.getMeasuredVarList(Bs)
-    #    As = self.getMeasuredVarList(As)
+        # Terminate if we cannot make a big enough control set
+        if setLength(Ls) + 1 > setLength(Bs) + setLength(remainingLs) +\
+                setLength(remainingVs):
+            return None
 
-    #    if len(Bs) < len(As)-1 or len(Cs) == 0:
-    #        return None
+        for L in remainingLs:
+            Bs.update(self.l.pickAllMeasures(L))
+        for V in remainingVs:
+            Bs.update(self.l.pickAllMeasures(V))
 
-    #    if not sample:
-    #        return self.g.rankTest(As, Bs + Cs)
+        Bs = self.getMeasuredVarList(Bs)
+        As = self.getMeasuredVarList(As)
 
-    #    # Sample Test
-    #    # Must have rank drop in every test to be deficient
-    #    # Return True if rank is deficient (fail to reject null)
-    #    plist = []
-    #    for C in Cs:
-    #        p = self.sampleRankTest(As, Bs + [C])
-    #        plist.append(p)
-    #    plist.sort()
-    #    test = bonferroniHolmTest(plist, self.alpha)
-    #    return test
-
-
-    # Find smallest set that is rankDeficient
-    #def runParentSetTestRecursive(self, Ls, V, sample=False):
-    #    vprint(f"Running! {Ls} vs {V}", self.verbose)
-    #    smallestLs = deepcopy(Ls)
-
-    #    if len(Ls) <= 1:
-    #        vprint("set is too small", self.verbose)
-    #        return set()
-
-    #    try:
-    #        rankDeficient = self.parentSetTest(Ls, V, sample)
-    #    except:
-    #        import IPython; IPython.embed(); exit(1)
-    #    if rankDeficient is None:
-    #        vprint("Result is None", self.verbose)
-    #        discovered = []
-    #        for L in Ls:
-    #            subLs = Ls - set([L])
-    #            newLs = self.runParentSetTestRecursive(subLs, V, sample)
-    #            discovered.append(newLs)
-
-    #        smallestLs = set()
-    #        for L in discovered:
-    #            if len(L) > 0 and len(smallestLs) == 0:
-    #                smallestLs = L
-    #            elif len(L) > 0 and len(L) < len(smallestLs):
-    #                smallestLs = L
-    #        return smallestLs
-
-    #    if not rankDeficient:
-    #        vprint("This is full rank", self.verbose)
-    #        return set()
-
-    #    # If rank is deficient
-    #    vprint("Rank is deficient!", self.verbose)
-    #    smallestLs = deepcopy(Ls)
-    #    for L in Ls:
-    #        subLs = Ls - set([L])
-    #        newLs = self.runParentSetTestRecursive(subLs, V, sample)
-    #        if len(newLs) < len(smallestLs) and len(newLs) > 0:
-    #            smallestLs = newLs
-    #    return smallestLs
-
+        if not sample:
+            return self.g.rankTest(As, Bs, rk=k)
+        else:
+            return self.sampleRankTest(As, Bs, rk=k)
 
 
     # Too many false negatives for parentSetTest
-    #def runParentSetTest(self, run=1, sample=False):
-    #    vprint("Starting parentSetTest...", self.verbose)
-    #    anyFound = False
-    #    for V in self.l.activeSet:
-    #        Ls = deepcopy(self.l.latentSet)
-    #        smallestLs = self.runParentSetTestRecursive(Ls, V, sample)
-    #        if len(smallestLs) > 0:
-    #            self.l.addToLatentSet(smallestLs, set([V]))
-    #            vprint(f"Found that {V} belongs to {smallestLs}.", self.verbose)
-    #            anyFound = True
-    #    self.l.confirmTempGroups()
-    #    pprint(self.l.latentDict, self.verbose)
-    #    return anyFound
+    def runParentSetTest(self, k=1, run=1, sample=False):
+        vprint(f"Starting parentSetTest k={k}...", self.verbose)
+        anyFound = False
+
+        # Terminate if not enough active variables
+        if k > len(self.l.latentSet):
+            insufficientVars = True
+            return (anyFound, insufficientVars)
+        else:
+            insufficientVars = False
+
+        for Ls in combinations(self.l.latentSet, k):
+            Ls = set(Ls)
+            for V in self.l.activeSet:
+
+                if not V in self.l.activeSet:
+                    continue
+
+                rankDeficient = self.parentSetTest(Ls, V, run, sample)
+
+                if rankDeficient is None:
+                    break
+
+                if rankDeficient:
+                    vprint(f"Found parents {Ls} for {V}.", self.verbose)
+                    self.l.addStrayChild(Ls, V)
+                    anyFound = True
+
+        return (anyFound, insufficientVars)
 
 
     # Algorithm to find the latent structure
@@ -247,18 +209,20 @@ class StructureFinder:
             k = 2
             testlist = []
             while True:
-                anyFound1, insufficientVars1 =\
-                        self.runStructuralRankTest(k=k, run=run, sample=sample)
-                testlist.append(anyFound1)
-                #test2 = self.runParentSetTest(run, sample)
-
+                test1 = self.runStructuralRankTest(k=k, run=run, sample=sample)
+                testlist.append(test1[0])
                 k += 1
 
-                # Start again at smallest Cardinality
-                #if anyFound1:
-                #    break
+                if test1[1]:
+                    break
 
-                if insufficientVars1:
+            k = 1
+            while True:
+                test2 = self.runParentSetTest(k, run, sample)
+                testlist.append(test2[0])
+                k += 1
+
+                if test2[1]:
                     break
 
             if not any(testlist):

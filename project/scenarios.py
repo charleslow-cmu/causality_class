@@ -1,12 +1,26 @@
 from GaussianGraph import GaussianGraph
 
 
-def scenario0():
+def scenario0a():
     g = GaussianGraph()
     g.add_variable("L1", None)
     g.add_variable("L2", ["L1"])
 
     g.add_variable("X1", "L1")
+    g.add_variable("X2", "L1")
+    g.add_variable("X3", "L2")
+    g.add_variable("X4", "L2")
+    return g
+
+
+def scenario0b():
+    g = GaussianGraph()
+    g.add_variable("L1", None)
+    g.add_variable("L2", ["L1"])
+
+    g.add_variable("X1", ["L1", "L2"])
+    g.add_variable("X1", ["L1", "L2"])
+    g.add_variable("X1", ["L1", "L2"])
     g.add_variable("X2", "L1")
     g.add_variable("X3", "L2")
     g.add_variable("X4", "L2")
@@ -31,7 +45,6 @@ def scenario1():
     g.add_variable("X8", ["L4", "L5"])
     g.add_variable("X9", "L6")
     g.add_variable("X10", "L6")
-    g.add_variable("X11", "L6")
     return g
 
 def scenario2():

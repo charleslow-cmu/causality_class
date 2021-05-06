@@ -12,6 +12,7 @@ class LatentGroups():
         self.latentSet = set()
         self.activeSet = set([MinimalGroup(x) for x in X])
         self.latentDict = {}
+        self.strayChildren = {}
         self.latentDictTemp = {}
 
     # Create a new Minimal Latent Group
@@ -58,6 +59,37 @@ class LatentGroups():
         self.activeSet = setDifference(self.activeSet, Vs)
         self.latentSet.add(newParents)
 
+    def addStrayChild(self, Ls, V):
+        newLlist = []
+        for L in Ls:
+            for var in L.vars:
+                newLlist.append(var)
+        newParents = MinimalGroup(newLlist)
+
+        if not newParents in self.strayChildren:
+            self.strayChildren[newParents] = {
+                    "children": set([V]),
+                    "subgroups": Ls
+                    }
+        else:
+            self.strayChildren[newParents]["children"].add(V)
+            self.strayChildren[newParents]["subgroups"].update(Ls)
+
+        # Remove from activeSet
+        self.activeSet = self.activeSet - set([V])
+
+    # Remove variable sets that are composed of of other variables
+    #def simplifySet(self, VSet):
+    #    simplifiedVSet = set()
+
+    #    allVs = set()
+    #    for V in VSet:
+    #        allVs.update(V.vars)
+
+    #    for V in VSet:
+    #        if not V.vars <= (allVs - V.vars):
+    #            simplifiedVSet.add(V)
+    #    return simplifiedVSet
 
     # Merge overlapping groups in dTemp
     #def mergeTempGroups(self, run=1):
@@ -177,7 +209,11 @@ class LatentGroups():
         for V in availableXs:
             if not V.isLatent():
                 A.add(V)
-                break
+
+        # Make sure we return same cardinality as L
+        while len(A) > len(L):
+            A.pop()
+
         return A
 
     # As opposed to pickRepresentativeMeasures, pickAllMeasures 
@@ -199,6 +235,12 @@ class LatentGroups():
         for C in values["children"]:
             if not C.isLatent():
                 A.add(C)
+
+        # Add Stray Children that belong
+        for parent, values in self.strayChildren.items():
+            if parent.vars <= L.vars:
+                A.update(values["children"])
+
         return A
 
 
