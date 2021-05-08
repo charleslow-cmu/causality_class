@@ -32,6 +32,22 @@ def setDifference(As, Bs):
     return newset
 
 
+# Given a set of MinimalGroups
+# Deduplicate cases where Vs includes {L1, {L1, L3}}
+# into just {{L1, L3}}
+def deduplicate(Vs):
+    newVs = set()
+    for Vi in Vs:
+        for Vj in Vs:
+            isDuplicate = False
+            if Vi.vars < Vj.vars:
+                isDuplicate = True
+                break
+        if not isDuplicate:
+            newVs.add(Vi)
+    return newVs
+
+
 def vprint(s, verbose=False):
     if verbose:
         print(s)

@@ -35,6 +35,7 @@ def runTests(scenario, nTrials, sampleSizes, alpha=0.01, verbose=False):
             g = scenario()
             refModel = StructureFinder(g, alpha=alpha)
             refModel.findLatentStructure(verbose=verbose, sample=False)
+            exit(1)
             
             # Run our model on the sample
             testModel = StructureFinder(g, alpha=alpha)
@@ -66,32 +67,7 @@ def plot_scores(scores):
 if __name__ == "__main__":
 
     # Run Trials
-    #nTrials = 10
-    #sampleSizes = [100]
-    #scores = runTests(scenario1, nTrials, sampleSizes, alpha=0.05, verbose=False)
-
-
-    X = np.random.randn(4,3)
-    phi = np.random.randn(3,3)
-    Y = np.random.randn(4,3)
-    cov = X @ phi @ Y.T
-    i=[1,2]
-    j=[2,3]
-    k=[0,1,2]
-    print(cov[np.ix_(i,j)])
-    print(X[np.ix_(i,k)] @ phi @ Y[np.ix_(j,k)].T)
-
-
-
-    # Testing
-    #reject = 0
-    #for _ in range(100):
-    #    g = scenario0()
-    #    df = g.generateData(1000)
-
-    #    rankTester = RankTester(df, trials=1000, normal=True, alpha=0.05)
-    #    test = rankTester.test([0,2], [1,3], r=1)
-    #    reject += test
-    #print(reject)
-
+    nTrials = 1
+    sampleSizes = [1000]
+    scores = runTests(scenario4, nTrials, sampleSizes, alpha=0.05, verbose=True)
 

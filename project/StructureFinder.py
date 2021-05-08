@@ -62,8 +62,7 @@ class StructureFinder:
     def structuralRankTest(self, Vs, k, run=1, sample=False):
 
         remainingVs = setDifference(self.l.activeSet, Vs)
-
-        if setLength(Vs) > setLength(remainingVs) + setLength(self.l.latentSet):
+        if setLength(Vs) > setLength(remainingVs):
             return None
 
         As = set()
@@ -74,38 +73,58 @@ class StructureFinder:
         Bs = set()
         for V in remainingVs:
             Bs.update(self.l.pickAllMeasures(V))
-
-        for V in self.l.latentSet:
-            Bs.update(self.l.pickAllMeasures(V))
         Bs = self.getMeasuredVarList(Bs)
 
         if not sample:
-            return self.g.rankTest(As, Bs, k-1)
+            return self.g.rankTest(As, Bs, k)
 
         else:
-            return self.sampleRankTest(As, Bs, k-1)
+            return self.sampleRankTest(As, Bs, k)
 
 
     # Test a k subset of Variables to find Clusters
-    def runStructuralRankTest(self, k=2, run=1, sample=False):
+    def runStructuralRankTest(self, k=1, run=1, sample=False):
         vprint(f"Starting structuralRankTest k={k}...", self.verbose)
         anyFound = False
 
         # Terminate if not enough active variables
-        if k > setLength(self.l.activeSet):
+        if k > setLength(self.l.activeSet)/2:
             insufficientVars = True
             return (anyFound, insufficientVars)
         else:
             insufficientVars = False
 
-        for Vs in generateSubset(self.l.activeSet, k):
+        # Terminate if all the active variables already
+        # belong to a Group
+        discovered = set()
+        for values in self.l.latentDict.values():
+            discovered.update(values["children"])
+        remaining = self.l.activeSet-discovered
+        if len(remaining) == 0:
+            insufficientVars = True
+            return (anyFound, insufficientVars)
+
+
+        for Vs in generateSubset(self.l.activeSet, k+1):
             Vs = set(Vs)
 
-            if not Vs <= self.l.activeSet:
+            # Vs must not contain any AtomicGroup <= k-1
+            testingExistingGroup = False
+            for existingGroup in self.l.invertedDict.keys():
+                if existingGroup <= Vs:
+                    testingExistingGroup = True
+                    break
+            if testingExistingGroup:
                 continue
 
-            if setLength(Vs) < k:
-                break
+            # Vs must not contain only variables that already
+            # belong to a discovered group
+            alreadyDiscovered = set()
+            for existingGroup in self.l.invertedDict.keys():
+                commonElements = Vs.intersection(existingGroup)
+                alreadyDiscovered.update(commonElements)
+            if alreadyDiscovered == Vs:
+                continue
 
             rankDeficient = self.structuralRankTest(Vs, k, run, sample)
             #vprint(f"Test {Vs}: Rank deficient {rankDeficient}", self.verbose)
@@ -114,89 +133,14 @@ class StructureFinder:
                 insufficientVars = True
                 break
 
+
             if rankDeficient:
-                self.l.addToLatentSet(Vs, k-1)
+                self.l.addToLatentSet(Vs, k)
                 vprint(f"Found cluster {Vs}.", self.verbose)
                 anyFound = True
 
         return (anyFound, insufficientVars)
 
-
-    # Test if V is children of Ls
-    # V: a MinimalGroup
-    def parentSetTest(self, Ls, V, run=1, sample=False):
-        #print(f"Testing for {V} against {Ls}")
-
-        k = setLength(Ls)
-        remainingLs = self.l.latentSet - Ls
-        remainingVs = self.l.activeSet - set([V])
-
-        As = set()
-        for L in Ls:
-            As.update(self.l.pickRepresentativeMeasures(L))
-        try:
-            assert len(As) == setLength(Ls), "As must be same length as Ls"
-        except:
-            set_trace()
-
-        if V.isLatent():
-            As.update(self.l.pickAllMeasures(V))
-        else:
-            As.add(V)
-
-        Bs = set()
-        for L in Ls:
-            Bs.update(self.l.pickRepresentativeMeasures(L, usedXs=As))
-
-        # Terminate if we cannot make a big enough control set
-        if setLength(Ls) + 1 > setLength(Bs) + setLength(remainingLs) +\
-                setLength(remainingVs):
-            return None
-
-        for L in remainingLs:
-            Bs.update(self.l.pickAllMeasures(L))
-        for V in remainingVs:
-            Bs.update(self.l.pickAllMeasures(V))
-
-        Bs = self.getMeasuredVarList(Bs)
-        As = self.getMeasuredVarList(As)
-
-        if not sample:
-            return self.g.rankTest(As, Bs, rk=k)
-        else:
-            return self.sampleRankTest(As, Bs, rk=k)
-
-
-    # Too many false negatives for parentSetTest
-    def runParentSetTest(self, k=1, run=1, sample=False):
-        vprint(f"Starting parentSetTest k={k}...", self.verbose)
-        anyFound = False
-
-        # Terminate if not enough active variables
-        if k > len(self.l.latentSet):
-            insufficientVars = True
-            return (anyFound, insufficientVars)
-        else:
-            insufficientVars = False
-
-        for Ls in combinations(self.l.latentSet, k):
-            Ls = set(Ls)
-            for V in self.l.activeSet:
-
-                if not V in self.l.activeSet:
-                    continue
-
-                rankDeficient = self.parentSetTest(Ls, V, run, sample)
-
-                if rankDeficient is None:
-                    break
-
-                if rankDeficient:
-                    vprint(f"Found parents {Ls} for {V}.", self.verbose)
-                    self.l.addStrayChild(Ls, V)
-                    anyFound = True
-
-        return (anyFound, insufficientVars)
 
 
     # Algorithm to find the latent structure
@@ -206,34 +150,31 @@ class StructureFinder:
         run = 1
 
         while True:
-            k = 2
-            testlist = []
-            while True:
-                test1 = self.runStructuralRankTest(k=k, run=run, sample=sample)
-                testlist.append(test1[0])
-                k += 1
-
-                if test1[1]:
-                    break
-
             k = 1
+            foundList = []
             while True:
-                test2 = self.runParentSetTest(k, run, sample)
-                testlist.append(test2[0])
+                anyFound, insufficientVars = self.runStructuralRankTest(k=k, 
+                        run=run, sample=sample)
+                foundList.append(anyFound)
                 k += 1
 
-                if test2[1]:
+                if insufficientVars:
                     break
 
-            if not any(testlist):
-                break
-
-            # self.l.confirmTempGroups()
             pprint(self.l.latentDict, self.verbose)
+            run += 1
 
-            # Move latentSet back into activeSet
-            self.l.activeSet.update(self.l.latentSet)
-            self.l.latentSet = set()
+            # Remove variables belonging to a Group from activeSet
+            # Set Groups as activeSet
+            for parent, values in self.l.latentDict.items():
+                self.l.activeSet.add(parent)
+                for child in values["children"]:
+                    self.l.activeSet = setDifference(self.l.activeSet, 
+                                                 values["children"])
+            vprint(f"Active Set is: {self.l.activeSet}", self.verbose)
+
+            if not any(foundList):
+                break
 
     # Return a node and edge set for plotting with networkx
     def reportDiscoveredGraph(self):
