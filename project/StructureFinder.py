@@ -95,7 +95,7 @@ class StructureFinder:
             insufficientVars = False
 
         # Terminate if all the active variables already
-        # belong to a Group
+        # belong to some Group
         discovered = set()
         for values in self.l.latentDict.values():
             discovered.update(values["children"])
@@ -108,10 +108,13 @@ class StructureFinder:
         for Vs in generateSubset(self.l.activeSet, k+1):
             Vs = set(Vs)
 
-            # Vs must not contain any AtomicGroup <= k-1
+            # Vs must not contain more than k elements from
+            # any AtomicGroup with cardinality <= k-1
             testingExistingGroup = False
             for existingGroup in self.l.invertedDict.keys():
-                if existingGroup <= Vs:
+                commonElements = setIntersection(Vs, existingGroup)
+                existingGroupCardinality = self.l.invertedDict[existingGroup]
+                if len(commonElements) > existingGroupCardinality:
                     testingExistingGroup = True
                     break
             if testingExistingGroup:
@@ -126,6 +129,7 @@ class StructureFinder:
             if alreadyDiscovered == Vs:
                 continue
 
+
             rankDeficient = self.structuralRankTest(Vs, k, run, sample)
             #vprint(f"Test {Vs}: Rank deficient {rankDeficient}", self.verbose)
 
@@ -133,10 +137,11 @@ class StructureFinder:
                 insufficientVars = True
                 break
 
-
             if rankDeficient:
                 self.l.addToLatentSet(Vs, k)
                 vprint(f"Found cluster {Vs}.", self.verbose)
+                if k == 3 and run > 1:
+                    set_trace()
                 anyFound = True
 
         return (anyFound, insufficientVars)
@@ -161,7 +166,6 @@ class StructureFinder:
                 if insufficientVars:
                     break
 
-            pprint(self.l.latentDict, self.verbose)
             run += 1
 
             # Remove variables belonging to a Group from activeSet
@@ -175,6 +179,9 @@ class StructureFinder:
 
             if not any(foundList):
                 break
+
+
+        pprint(self.l.latentDict, self.verbose)
 
     # Return a node and edge set for plotting with networkx
     def reportDiscoveredGraph(self):

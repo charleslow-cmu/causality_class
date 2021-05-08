@@ -21,23 +21,41 @@ class LatentGroups():
 
         k = setLength(Vs) - 1 # size of Group
 
-        # If Vs overlap with an earlier cluster, add to it
+        # Find earlier discovered groups with children that
+        # overlap with Vs
         overlappingGroups = []
         for parent, values in self.latentDict.items():
             children = values["children"]
-            if len(children.intersection(Vs)) > 0:
+            if setOverlap(children, Vs):
                 overlappingGroups.append(parent)
 
-        overlappedCardinality = setLength(set(overlappingGroups))
+        dedupedGroups = deduplicate(set(overlappingGroups))
+        overlappedCardinality = setLength(dedupedGroups)
         gap = k - overlappedCardinality
+        dedupedGroups = list(dedupedGroups)
+        print(f"Vs {Vs} | gap {gap}")
+
+        assert gap >= 0, "Cardinality Gap cannot be negative"
 
         # If Vs just overlaps with exactly 1 Group that is of
         # cardinality k, we can merge them right in
-        if len(overlappingGroups) == 1 and gap == 0:
+        if len(dedupedGroups) == 1 and gap == 0:
+           parent = dedupedGroups[0]
            values = self.latentDict[parent]
-           values["children"] = values["children"].union(Vs)
+           oldChildren = values["children"]
+           Vs = oldChildren.union(Vs)
+
+           # Remove previous children from Vs
+           previousChildren = set()
+           for group in overlappingGroups:
+               if group != parent:
+                   children = self.latentDict[group]["children"]
+                   previousChildren.update(children)
+           Vs = Vs - previousChildren
+           print(f"previousChildren: {previousChildren}, Vs: {Vs}")
 
            # Deduplicate Children
+           values["children"] = Vs
            values["children"] = deduplicate(values["children"])
 
            # Create a subgroup pointer for each latent var
@@ -47,6 +65,9 @@ class LatentGroups():
 
            # Update the entry
            self.latentDict[parent] = values
+
+           self.invertedDict.pop(frozenset(oldChildren))
+           self.invertedDict[frozenset(values["children"])] = len(parent)
            return
 
         # If Vs overlaps with more than 1 Group
@@ -54,7 +75,7 @@ class LatentGroups():
         # If there is overlap but not enough to hit cardinality k
         # Then we need to create new Latent Variables
         newParentList = []
-        for group in overlappingGroups:
+        for group in dedupedGroups:
             for parent in group.vars:
                 newParentList.append(parent)
 
@@ -68,7 +89,7 @@ class LatentGroups():
         for V in Vs:
             if V.isLatent():
                 subgroups.update([V])
-        for group in overlappingGroups:
+        for group in dedupedGroups:
             subgroups.update([group])
 
         # Remove previous children from Vs
@@ -76,20 +97,25 @@ class LatentGroups():
         for group in overlappingGroups:
             children = self.latentDict[group]["children"]
             previousChildren.update(children)
+        print(f"previousChildren: {previousChildren}")
         Vs = Vs - previousChildren
 
         # Deduplicate cases where Vs includes {L1, {L1, L3}}
         # into just {{L1, L3}}
-        newVs = deduplicate(Vs)
-        print(f"Vs: {Vs}, newVs: {newVs}")
+        Vs = deduplicate(Vs)
 
         # Create new entry
         self.latentDict[newParents] = {
-                "children": newVs,
+                "children": Vs,
                 "subgroups": subgroups
                 }
 
-        self.invertedDict[frozenset(newVs)] = len(newParents)
+        # Add to invertedDict
+        #for subgroup in subgroups:
+        #    Vs.update(self.latentDict[subgroup]["children"])
+        self.invertedDict[frozenset(Vs)] = len(newParents)
+
+
 
 
     def addStrayChild(self, Ls, V):

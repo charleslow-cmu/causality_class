@@ -32,6 +32,27 @@ def setDifference(As, Bs):
     return newset
 
 
+# Check if any element exists in the intersection of two
+# sets of MinimalGroups
+def setOverlap(As, Bs):
+    if len(As.intersection(Bs)) > 0:
+        return True
+
+    return len(setIntersection(As, Bs)) > 0
+
+
+def setIntersection(As, Bs):
+
+    Avars = set()
+    for A in As:
+        Avars.update(A.vars)
+    Bvars = set()
+    for B in Bs:
+        Bvars.update(B.vars)
+
+    return Avars.intersection(Bvars)
+
+
 # Given a set of MinimalGroups
 # Deduplicate cases where Vs includes {L1, {L1, L3}}
 # into just {{L1, L3}}

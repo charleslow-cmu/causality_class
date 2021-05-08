@@ -69,5 +69,5 @@ if __name__ == "__main__":
     # Run Trials
     nTrials = 1
     sampleSizes = [1000]
-    scores = runTests(scenario4, nTrials, sampleSizes, alpha=0.05, verbose=True)
+    scores = runTests(scenarioDuala, nTrials, sampleSizes, alpha=0.05, verbose=True)
 
