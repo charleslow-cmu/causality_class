@@ -7,6 +7,7 @@ import scipy.stats
 import operator
 from functools import reduce
 from RankTester import RankTester
+from CCARankTester import CCARankTester
 import IPython
 
 class StructureFinder:
@@ -21,8 +22,7 @@ class StructureFinder:
     # Sample of generated data from g
     def addSample(self, df):
         self.df = df
-        self.rankTester = RankTester(df, trials=1000, normal=True, 
-                                    alpha=self.alpha)
+        self.rankTester = CCARankTester(df, alpha=self.alpha)
 
     # Bootstrap sample our data and calculate covariance matrix
     # k times
@@ -104,8 +104,13 @@ class StructureFinder:
             insufficientVars = True
             return (anyFound, insufficientVars)
 
+        allSubsets = generateSubset(self.l.activeSet, k+1)
+        if k == 3:
+            with open("test.txt", "w") as f:
+                for subset in allSubsets:
+                    f.write(f"{subset} \n")
 
-        for Vs in generateSubset(self.l.activeSet, k+1):
+        for Vs in allSubsets:
             Vs = set(Vs)
 
             # Vs must not contain more than k elements from
@@ -138,14 +143,52 @@ class StructureFinder:
                 break
 
             if rankDeficient:
-                self.l.addToLatentSet(Vs, k)
+                self.l.addToDict(self.l.tempDict, Vs, k)
+                self.l.addToTempSet(Vs, k)
                 vprint(f"Found cluster {Vs}.", self.verbose)
-                if k == 3 and run > 1:
-                    set_trace()
                 anyFound = True
 
         return (anyFound, insufficientVars)
 
+
+    # Verify if all k+1 subsets in a cluster get the rank deficiency
+    def verifyClusters(self, k=1, run=1, sample=False):
+        vprint(f"Verifying Clusters for k={k}...", self.verbose)
+
+        for parent, values in self.l.tempDict.items():
+            if len(parent) != k:
+                continue
+
+            subgroups = values["subgroups"]
+            children = values["children"]
+
+            # Get k variables from each k-subgroup
+            #for subgroup in subgroups:
+            #    size = len(subgroup)
+            #    subchildren = self.l.latentDict[subgroup]["children"]
+            #    for i, subchild in enumerate(iter(subchildren)):
+            #        children.add(subchild)
+            #        if i >= size:
+            #            break
+
+            print(f"Cluster {parent} has {len(children)} child: {children}")
+            subsets = generateSubset(children, k=k+1)
+            testResults = {True: [], False: []}
+            for subset in subsets:
+                rankDeficient = self.structuralRankTest(subset, k, run, sample)
+
+                assert not rankDeficient is None, "Should not be None"
+                testResults[rankDeficient].append(subset)
+
+            if len(testResults[False]) > 0:
+                badElements = reduce(set.intersection, testResults[False])
+                print(f"Removing bad elements {badElements}")
+
+                # Remove badElements
+                # How to properly identify the bad elements and the good ones?
+                for i, tempSet in enumerate(self.l.tempSet):
+                    if len(tempSet[0].intersection(badElements)) > 0:
+                        self.l.tempSet.pop(i)
 
 
     # Algorithm to find the latent structure
@@ -160,12 +203,19 @@ class StructureFinder:
             while True:
                 anyFound, insufficientVars = self.runStructuralRankTest(k=k, 
                         run=run, sample=sample)
+
+                #self.verifyClusters(k=k, run=run, sample=sample)
+                self.l.confirmTempSets() 
+                #self.l.addToLatentSet(Vs, k)
+
                 foundList.append(anyFound)
                 k += 1
 
                 if insufficientVars:
                     break
 
+            print(f"{'='*10} End of Run {run} {'='*10}")
+            pprint(self.l.latentDict, self.verbose)
             run += 1
 
             # Remove variables belonging to a Group from activeSet
@@ -175,13 +225,11 @@ class StructureFinder:
                 for child in values["children"]:
                     self.l.activeSet = setDifference(self.l.activeSet, 
                                                  values["children"])
-            vprint(f"Active Set is: {self.l.activeSet}", self.verbose)
 
             if not any(foundList):
                 break
 
 
-        pprint(self.l.latentDict, self.verbose)
 
     # Return a node and edge set for plotting with networkx
     def reportDiscoveredGraph(self):

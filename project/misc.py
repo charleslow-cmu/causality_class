@@ -1,4 +1,5 @@
 from MinimalGroup import MinimalGroup
+from MixedGraph import MixedGraph
 from copy import deepcopy
 from math import factorial as fac
 from math import sqrt
@@ -363,3 +364,62 @@ def asymptoticCov(data, pcols, qcols, normal=False):
 
 
 
+def getGraph(l):
+
+    # Start off with all Xvars connected
+    l = deepcopy(l)
+    Xvars = l.X
+
+    G = MixedGraph()
+    for X1 in Xvars:
+        X1 = next(iter(X1.vars))
+        G.addNode(X1, level=0)
+        for X2 in Xvars:
+            X2 = next(iter(X2.vars))
+            if X2 != X1:
+                G.addEdge(X1, X2, type=0)
+
+    activeSet = G.nodes
+
+    # Reverse order for discoveredGraph
+    discoveredGraph = {}
+    for parents, values in reversed(list(l.latentDict.items())):
+        discoveredGraph[parents] = values
+
+    # Work iteratively through the Graph Dictionary
+    while len(discoveredGraph) > 0:
+        parents, values = discoveredGraph.popitem()
+        childrenSet = values["children"]
+
+        # Remove all edges from children
+        # Remove them from activeSet
+        for childGroup in childrenSet:
+            for child in childGroup.vars:
+                G.removeUndirEdgesFromNode(child)
+            activeSet = activeSet - childGroup.vars
+            
+        # Find highest child level
+        highestLevel = 0
+        for childGroup in childrenSet:
+            for child in childGroup.vars:
+                childLevel = G.nodeLevel[child]
+                if childLevel > highestLevel:
+                    highestLevel = childLevel
+
+        # Add parents as new nodes
+        for parent in parents.vars:
+            if not parent in G.nodes:
+                G.addNode(parent, level=highestLevel+1)
+                activeSet.add(parent)
+
+                # Add edges to all other nodes in activeSet
+                for V in activeSet:
+                    if parent != V:
+                        G.addEdge(parent, V, type=0)
+
+        # Add edges from children to new parents
+        for parent in parents.vars:
+            for childGroup in childrenSet:
+                for child in childGroup.vars:
+                    G.addEdge(parent, child, type=1)
+    return G

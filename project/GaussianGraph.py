@@ -2,6 +2,7 @@ import numpy as np
 from numpy.linalg import matrix_rank
 import pandas as pd
 from math import sqrt
+from pdb import set_trace
 
 class GaussianGraph:
     def __init__(self):
@@ -83,7 +84,12 @@ class GaussianGraph:
         A = sorted(A)
         B = sorted(B)
         cov = self.subcovariance(A, B)
-        return matrix_rank(cov) <= rk
+        try:
+            test = matrix_rank(cov) <= rk
+        except:
+            set_trace()
+        return test
+
 
     def generateData(self, n=100):
         df = pd.DataFrame(columns = self.xvars)
