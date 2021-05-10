@@ -105,10 +105,6 @@ class StructureFinder:
             return (anyFound, insufficientVars)
 
         allSubsets = generateSubset(self.l.activeSet, k+1)
-        if k == 3:
-            with open("test.txt", "w") as f:
-                for subset in allSubsets:
-                    f.write(f"{subset} \n")
 
         for Vs in allSubsets:
             Vs = set(Vs)
@@ -142,9 +138,20 @@ class StructureFinder:
                 insufficientVars = True
                 break
 
+            # Test for the lowest rank that is deficient
+            gap = 0
             if rankDeficient:
-                self.l.addToDict(self.l.tempDict, Vs, k)
-                self.l.addToTempSet(Vs, k)
+                rankDeficient2 = True
+                while rankDeficient2 and k-gap > 0:
+                    gap += 1
+                    rankDeficient2 = self.structuralRankTest(Vs, k-gap, run, sample)
+                if not rankDeficient2:
+                    gap -= 1
+                print(f"Test {Vs}, rank={k-gap}")
+
+            if rankDeficient:
+                self.l.addToDict(self.l.tempDict, Vs, k-gap)
+                self.l.addToTempSet(Vs, k-gap)
                 vprint(f"Found cluster {Vs}.", self.verbose)
                 anyFound = True
 
@@ -215,6 +222,7 @@ class StructureFinder:
                     break
 
             print(f"{'='*10} End of Run {run} {'='*10}")
+            print(f"Current State:")
             pprint(self.l.latentDict, self.verbose)
             run += 1
 
@@ -222,9 +230,13 @@ class StructureFinder:
             # Set Groups as activeSet
             for parent, values in self.l.latentDict.items():
                 self.l.activeSet.add(parent)
-                for child in values["children"]:
-                    self.l.activeSet = setDifference(self.l.activeSet, 
+                self.l.activeSet = setDifference(self.l.activeSet, 
                                                  values["children"])
+                self.l.activeSet = deduplicate(self.l.activeSet)
+
+
+            print(f"Active Set: {self.l.activeSet}")
+            print(f"{'='*30}")
 
             if not any(foundList):
                 break

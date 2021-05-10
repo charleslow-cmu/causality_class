@@ -84,10 +84,7 @@ class GaussianGraph:
         A = sorted(A)
         B = sorted(B)
         cov = self.subcovariance(A, B)
-        try:
-            test = matrix_rank(cov) <= rk
-        except:
-            set_trace()
+        test = matrix_rank(cov) <= rk
         return test
 
 

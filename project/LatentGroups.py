@@ -24,7 +24,8 @@ class LatentGroups():
     # If Ls is empty, we simply create new latent variables
     def addToDict(self, d, Vs, latentSize=1):
 
-        k = setLength(Vs) - 1 # size of Group
+        #k = setLength(Vs) - 1 # size of Group
+        k = latentSize
 
         # Find earlier discovered groups with children that
         # overlap with Vs

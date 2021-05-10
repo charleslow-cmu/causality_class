@@ -78,7 +78,7 @@ def scenario2():
 
 
 
-def scenario3():
+def scenario3a():
     g = GaussianGraph()
     g.add_variable("L1", None)
     g.add_variable("L2", "L1")
@@ -109,6 +109,85 @@ def scenario3():
     g.add_variable("X12", "L12")
     g.add_variable("X13", ["L12", "L13"])
     g.add_variable("X14", ["L12", "L13"])
+    g.add_variable("X15", "L14")
+    g.add_variable("X16", "L14")
+    g.add_variable("X17", ["L14", "L15"])
+    g.add_variable("X18", "L15")
+    return g
+
+
+
+def scenario3b():
+    g = GaussianGraph()
+    g.add_variable("L1", None)
+    g.add_variable("L2", "L1")
+    g.add_variable("L3", "L1")
+    g.add_variable("L4", "L1")
+    g.add_variable("L5", "L1")
+    g.add_variable("L6", ["L2", "L3"])
+    g.add_variable("L7", ["L2", "L3", "L6"])
+    g.add_variable("L8", ["L2", "L3", "L7"])
+    g.add_variable("L9", ["L2", "L3"])
+    g.add_variable("L10", ["L3", "L9"])
+    g.add_variable("L11", ["L4", "L5"])
+    g.add_variable("L12", ["L4", "L5", "L11"])
+    g.add_variable("L13", ["L4", "L5", "L12"])
+    g.add_variable("L14", ["L4", "L5"])
+    g.add_variable("L15", ["L5", "L14"])
+    g.add_variable("X1", "L6")
+    g.add_variable("X2", "L6")
+    g.add_variable("X3", "L7")
+    g.add_variable("X4", ["L7", "L8"])
+    g.add_variable("X5", ["L7", "L8"])
+    g.add_variable("X6", "L9")
+    g.add_variable("X7", "L9")
+    g.add_variable("X8", ["L9", "L10"])
+    g.add_variable("X9", "L10")
+    g.add_variable("X10", "L11")
+    g.add_variable("X11", "L11")
+    g.add_variable("X12", "L12")
+    g.add_variable("X13", ["L12", "L13"])
+    g.add_variable("X14", ["L12", "L13"])
+    g.add_variable("X15", "L14")
+    g.add_variable("X16", "L14")
+    g.add_variable("X17", ["L14", "L15"])
+    g.add_variable("X18", "L15")
+    return g
+
+
+
+def scenario3c():
+    g = GaussianGraph()
+    g.add_variable("L1", None)
+    g.add_variable("L2", "L1")
+    g.add_variable("L3", "L1")
+    g.add_variable("L4", "L1")
+    g.add_variable("L5", "L1")
+    g.add_variable("L6", "L2")
+    g.add_variable("L7", ["L2", "L3", "L6"])
+    g.add_variable("L8", ["L2", "L3", "L7"])
+    g.add_variable("L9", ["L2", "L3"])
+    g.add_variable("L10", ["L3", "L9"])
+    g.add_variable("L11", "L4")
+    g.add_variable("L12", ["L4", "L5", "L11"])
+    g.add_variable("L13", ["L4", "L5", "L12"])
+    g.add_variable("L14", ["L4", "L5"])
+    g.add_variable("L15", ["L5", "L14"])
+
+    g.add_variable("X1", ["L6", "L7", "L8"])
+    g.add_variable("X2", ["L6", "L7", "L8"])
+    g.add_variable("X3", ["L6", "L7", "L8"])
+    g.add_variable("X4", ["L6", "L7", "L8"])
+    g.add_variable("X5", ["L6", "L7", "L8"])
+    g.add_variable("X6", "L9")
+    g.add_variable("X7", "L9")
+    g.add_variable("X8", ["L9", "L10"])
+    g.add_variable("X9", "L10")
+    g.add_variable("X10", ["L11", "L12", "L13"])
+    g.add_variable("X11", ["L11", "L12", "L13"])
+    g.add_variable("X12", ["L11", "L12", "L13"])
+    g.add_variable("X13", ["L11", "L12", "L13"])
+    g.add_variable("X14", ["L11", "L12", "L13"])
     g.add_variable("X15", "L14")
     g.add_variable("X16", "L14")
     g.add_variable("X17", ["L14", "L15"])
@@ -147,7 +226,7 @@ def scenario4():
     return g
 
 
-def scenario5():
+def scenario5a():
     g = GaussianGraph()
     g.add_variable("L1", None)
     g.add_variable("L2", None)
@@ -169,4 +248,32 @@ def scenario5():
     g.add_variable("X9", ["L7", "L8"])
     g.add_variable("X10", ["L7", "L8"])
     g.add_variable("X11", ["L7", "L8"])
+    return g
+
+
+
+def scenario5b():
+    g = GaussianGraph()
+    g.add_variable("L1", None)
+    g.add_variable("L2", None)
+    g.add_variable("L3", "L1")
+    g.add_variable("L4", ["L1", "L2"])
+    g.add_variable("L5", "L2")
+    g.add_variable("L6", "L1")
+    g.add_variable("L7", ["L1", "L2"])
+    g.add_variable("L8", ["L1", "L2"])
+
+    g.add_variable("X1", "L3")
+    g.add_variable("X2", "L3")
+    g.add_variable("X3", "L4")
+    g.add_variable("X4", "L4")
+    g.add_variable("X5", "L5")
+    g.add_variable("X6", "L5")
+    g.add_variable("X7", "L1")
+    g.add_variable("X8", "L2")
+    g.add_variable("X9", "L6")
+    g.add_variable("X10", "L6")
+    g.add_variable("X11", ["L7", "L8"])
+    g.add_variable("X12", ["L7", "L8"])
+    g.add_variable("X13", ["L7", "L8"])
     return g

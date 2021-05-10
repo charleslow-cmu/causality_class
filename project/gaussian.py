@@ -64,6 +64,13 @@ def plot_scores(scores):
     plt.scatter(df.n, df["mean"], marker="o", color="b", s=50)
     plt.savefig("test.png")
 
+def printGraph(model, outpath):
+    G = getGraph(model.l)
+    G.toDot("example.dot")
+    graphs = pydot.graph_from_dot_file('example.dot')
+    graphs[0].set_size('"8,8!"')
+    graphs[0].write_png(outpath)
+
 if __name__ == "__main__":
 
     # Run Trials
@@ -72,18 +79,14 @@ if __name__ == "__main__":
     #scores = runTests(scenario5, nTrials, sampleSizes, alpha=0.05, verbose=True)
 
     sampleSize = 2000
-    scenario = "3"
-    trials = 5
+    scenario = "3b"
+    trials = 1
 
     for trial in range(trials):
-        g = scenario3()
+        g = scenario3b()
         model = StructureFinder(g, alpha=0.05)
         df = g.generateData(n=sampleSize)
         model.addSample(df)
-        model.findLatentStructure(verbose=True, sample=True)
+        model.findLatentStructure(verbose=True, sample=False)
 
-        G = getGraph(model.l)
-        G.toDot("example.dot")
-        graphs = pydot.graph_from_dot_file('example.dot')
-        graphs[0].set_size('"8,8!"')
-        graphs[0].write_png(f'plots/scenario{scenario}_{trial}.png')
+        printGraph(model, f'plots/scenario{scenario}_{trial}.png')
