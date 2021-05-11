@@ -79,11 +79,11 @@ if __name__ == "__main__":
     #scores = runTests(scenario5, nTrials, sampleSizes, alpha=0.05, verbose=True)
 
     sampleSize = 2000
-    scenario = "3b"
+    scenario = "5b"
     trials = 1
 
     for trial in range(trials):
-        g = scenario3b()
+        g = scenario5b()
         model = StructureFinder(g, alpha=0.05)
         df = g.generateData(n=sampleSize)
         model.addSample(df)

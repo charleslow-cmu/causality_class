@@ -147,7 +147,6 @@ class StructureFinder:
                     rankDeficient2 = self.structuralRankTest(Vs, k-gap, run, sample)
                 if not rankDeficient2:
                     gap -= 1
-                print(f"Test {Vs}, rank={k-gap}")
 
             if rankDeficient:
                 self.l.addToDict(self.l.tempDict, Vs, k-gap)
