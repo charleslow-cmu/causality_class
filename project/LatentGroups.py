@@ -16,13 +16,38 @@ class LatentGroups():
         self.invertedDict = {}
         self.strayChildren = {}
 
+    # When testing for k-AtomicGroups, as long as we have
+    # overlap of 1 element, we merge them
+    # Need to merge, otherwise we create unnecessary latent vars
+
+    #def mergeTempSets(self, k=k):
+    #    kTempSets = []
+    #    for tempSet, j in self.tempSet:
+    #        if j == k:
+    #            kTempSets.append(tempSet)
+
+    #    for i, tempSet in enumerate(kTempSets):
+    #        if len(tempSet[0].intersection(Vs)) > 0:
+    #            self.tempSet.pop(i)
+
+
     def addToTempSet(self, Vs, latentSize=1):
         self.tempSet.append((Vs, latentSize))
+
+    def removeFromTempSet(self, Vs):
+        for i, tempSet in enumerate(self.tempSet):
+            if len(tempSet[0].intersection(Vs)) > 0:
+                self.tempSet.pop(i)
 
     # Create a new Minimal Latent Group
     # As: Set of MinimalGroups to add as children
     # If Ls is empty, we simply create new latent variables
-    def addToDict(self, d, Vs, latentSize=1):
+    def addToDict(self, Vs, latentSize=1, temp=False):
+
+        if temp:
+            d = self.tempDict
+        else:
+            d = self.latentDict
 
         #k = setLength(Vs) - 1 # size of Group
         k = latentSize
@@ -45,10 +70,6 @@ class LatentGroups():
         if gap < 0:
             print(f"AtomicGroup is {k} but overlap is {overlappedCardinality}")
             return
-            #print(Vs)
-            #pprint(self.latentDict, True)
-            #print(overlappingGroups)
-            #print(dedupedGroups)
 
         #assert gap >= 0, "Cardinality Gap cannot be negative"
 
@@ -138,7 +159,7 @@ class LatentGroups():
 
     def confirmTempSets(self):
         for Vs, k in self.tempSet:
-            self.addToDict(self.latentDict, Vs, k)
+            self.addToDict(Vs, k, temp=False)
         self.tempSet = []
         self.tempDict = deepcopy(self.latentDict)
 
@@ -164,20 +185,19 @@ class LatentGroups():
 
 
     # Recursive search for one X per latent var in minimal group L
-    def pickRepresentativeMeasures(self, L, usedXs=set()):
+    def pickRepresentativeMeasures(self, latentDict, L, usedXs=set()):
         assert isinstance(L, MinimalGroup), "L is not a MinimalGroup."
 
         if not L.isLatent():
             return set([L])
 
         A = set()
-        values = self.latentDict[L]
-        n = len(L)
+        values = latentDict[L]
 
         # Add one X per L from each subgroup
         if len(values["subgroups"]) > 0:
             for subL in values["subgroups"]:
-                A.update(self.pickRepresentativeMeasures(subL, usedXs))
+                A.update(self.pickRepresentativeMeasures(latentDict, subL, usedXs))
 
         # Add remaining from own children
         #n = len(L) - setLength(values["subgroups"])

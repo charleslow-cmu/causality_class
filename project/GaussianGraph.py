@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.linalg import matrix_rank
 import pandas as pd
-from math import sqrt
+from math import sqrt, log
 from pdb import set_trace
 
 class GaussianGraph:
@@ -87,6 +87,15 @@ class GaussianGraph:
         test = matrix_rank(cov) <= rk
         return test
 
+    def infoDist(self, A, B):
+        cov = self.subcovariance(A, B)
+        covA = self.subcovariance(A, A)
+        covB = self.subcovariance(B, B)
+        det1 = abs(np.linalg.det(cov))
+        det2 = abs(np.linalg.det(covA))
+        det3 = abs(np.linalg.det(covB))
+        dist = -log(det1 / sqrt(det2*det3))
+        return dist 
 
     def generateData(self, n=100):
         df = pd.DataFrame(columns = self.xvars)

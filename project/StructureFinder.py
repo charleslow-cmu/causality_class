@@ -1,7 +1,7 @@
 from LatentGroups import LatentGroups
 from pdb import set_trace
 from misc import *
-from math import floor, sqrt
+from math import floor, sqrt, isclose
 import numpy as np
 import scipy.stats
 import operator
@@ -9,6 +9,7 @@ from functools import reduce
 from RankTester import RankTester
 from CCARankTester import CCARankTester
 import IPython
+from itertools import product
 
 class StructureFinder:
 
@@ -99,13 +100,12 @@ class StructureFinder:
         discovered = set()
         for values in self.l.latentDict.values():
             discovered.update(values["children"])
-        remaining = self.l.activeSet-discovered
+        remaining = self.l.activeSet - discovered
         if len(remaining) == 0:
             insufficientVars = True
             return (anyFound, insufficientVars)
 
         allSubsets = generateSubset(self.l.activeSet, k+1)
-
         for Vs in allSubsets:
             Vs = set(Vs)
 
@@ -130,7 +130,6 @@ class StructureFinder:
             if alreadyDiscovered == Vs:
                 continue
 
-
             rankDeficient = self.structuralRankTest(Vs, k, run, sample)
             #vprint(f"Test {Vs}: Rank deficient {rankDeficient}", self.verbose)
 
@@ -149,52 +148,170 @@ class StructureFinder:
                     gap -= 1
 
             if rankDeficient:
-                self.l.addToDict(self.l.tempDict, Vs, k-gap)
+                self.l.addToDict(Vs, k-gap, temp=True)
                 self.l.addToTempSet(Vs, k-gap)
                 vprint(f"Found cluster {Vs}.", self.verbose)
+                #if run > 1 and k >= 2:
+                #    set_trace()
                 anyFound = True
 
         return (anyFound, insufficientVars)
 
 
-    # Verify if all k+1 subsets in a cluster get the rank deficiency
-    def verifyClusters(self, k=1, run=1, sample=False):
-        vprint(f"Verifying Clusters for k={k}...", self.verbose)
+    def verifyClusters1(self, run=1, sample=False):
+        vprint(f"Verifying Clusters...", self.verbose)
 
-        for parent, values in self.l.tempDict.items():
-            if len(parent) != k:
+        # Active variables (not part of any k group)
+        clusteredVars = set()
+        for p, v in self.l.tempDict.items():
+            clusteredVars.update(v["children"])
+        activeVars = setDifference(self.l.activeSet, clusteredVars)
+
+        for Vs, k in self.l.tempSet:
+
+            # No need to test k=1
+            if k == 1:
                 continue
 
+            # Find the entry in tempDict
+            for parent, values in self.l.tempDict.items():
+                if values["children"] <= Vs:
+                    break
             subgroups = values["subgroups"]
             children = values["children"]
 
-            # Get k variables from each k-subgroup
-            #for subgroup in subgroups:
-            #    size = len(subgroup)
-            #    subchildren = self.l.latentDict[subgroup]["children"]
-            #    for i, subchild in enumerate(iter(subchildren)):
-            #        children.add(subchild)
-            #        if i >= size:
-            #            break
+            # Assemble subgroup vars
+            S = set()
+            for subgroup in subgroups:
+                if not subgroup in children:
+                    S.update(self.l.pickAllMeasures(subgroup))
 
-            print(f"Cluster {parent} has {len(children)} child: {children}")
-            subsets = generateSubset(children, k=k+1)
-            testResults = {True: [], False: []}
-            for subset in subsets:
-                rankDeficient = self.structuralRankTest(subset, k, run, sample)
+            # Assemble the B group
+            B = set()
+            for V in activeVars:
+                B.update(self.l.pickAllMeasures(V))
 
-                assert not rankDeficient is None, "Should not be None"
-                testResults[rankDeficient].append(subset)
+            for p, v in self.l.tempDict.items():
+                if (p != parent) and (not p in subgroups):
+                    B.update(self.l.pickRepresentativeMeasures(self.l.tempDict, p))
+            B = self.getMeasuredVarList(B)
 
-            if len(testResults[False]) > 0:
-                badElements = reduce(set.intersection, testResults[False])
-                print(f"Removing bad elements {badElements}")
+            # Test all subsets
+            Slen = setLength(subgroups)
+            gap = max(1, k-Slen)
+            for childSet in generateSubset(children, k=gap):
+                A = set()
+                for child in childSet:
+                    A.update(self.l.pickAllMeasures(child))
+                A = A.union(S)
+                Alist = self.getMeasuredVarList(A)
+                rankDeficient = self.g.rankTest(Alist, B, k-1)
+                if rankDeficient:
+                    print(f"False cluster! {A}")
+                    self.l.removeFromTempSet(A)
 
-                # Remove badElements
-                # How to properly identify the bad elements and the good ones?
-                for i, tempSet in enumerate(self.l.tempSet):
-                    if len(tempSet[0].intersection(badElements)) > 0:
-                        self.l.tempSet.pop(i)
+
+    # Verify if all k+1 subsets in a cluster get the rank deficiency
+    #def verifyClusters2(self, run=1, sample=False):
+    #    vprint(f"Verifying Clusters...", self.verbose)
+
+    #    # Active variables (not part of k groups)
+    #    clusteredVars = set()
+    #    for p, v in self.l.tempDict.items():
+    #        clusteredVars.update(v["children"])
+    #    activeVars = setDifference(self.l.activeSet, clusteredVars)
+
+    #    for Vs, k in self.l.tempSet:
+
+    #        # Find the entry in tempDict
+    #        for parent, values in self.l.tempDict.items():
+    #            if values["children"] <= Vs:
+    #                break
+    #        subgroups = values["subgroups"]
+    #        children = values["children"]
+
+    #        # Assemble subgroup vars
+    #        S = set()
+    #        for subgroup in subgroups:
+    #            if not subgroup in children:
+    #                S.update(self.l.pickAllMeasures(subgroup))
+
+    #        # Take up to k-1 vars from S
+    #        # Take remaining vars from A
+    #        # The remaining variables for A take from children
+    #        j = 0
+    #        Ssubsets = []
+    #        if len(S) > 0:
+    #            while True:
+    #                j += 1
+    #                Ssubsets = generateSubset(S, k=k-j)
+    #                if len(Ssubsets) > 0:
+    #                    break
+    #                assert k-j >= 0, "k-j is negative"
+
+    #        if len(S) > 0:
+    #            gap = j
+    #        else:
+    #            gap = k
+    #        Asubsets = generateSubset(children, k=gap)
+
+
+    #        # Combine Ssubsets and Asubsets
+    #        subsets = []
+    #        for As in Asubsets:
+    #            if len(Ssubsets) > 0:
+    #                for Ss in Ssubsets:
+    #                    subset = As.union(Ss)
+    #                    subsets.append(subset)
+    #            else:
+    #                subsets.append(As)
+    #        print(subsets)
+
+    #        # Assemble the B group
+    #        B = set()
+    #        for V in activeVars:
+    #            B.update(self.l.pickRepresentativeMeasures(self.l.latentDict, V))
+
+    #        for p, v in self.l.tempDict.items():
+    #            if (p != parent) and (not p in subgroups):
+    #                B.update(self.l.pickRepresentativeMeasures(self.l.tempDict, p))
+
+    #        # Take two distinct k subsets from B that are not rankDeficient
+    #        Bsubsets = generateSubset(B, k)
+    #        Blist = []
+    #        for Bp in Bsubsets:
+    #            Bp = self.getMeasuredVarList(Bp)
+    #            fullrank = True
+    #            for A in subsets:
+    #                A = self.getMeasuredVarList(A)
+    #                rankDeficient = self.g.rankTest(A, Bp, k-1)
+    #                if rankDeficient:
+    #                    fullrank = False
+    #                    break
+    #            if fullrank:
+    #                Blist.append(Bp)
+    #            if len(Blist) >= 2:
+    #                break
+    #        B1 = Blist[0]
+    #        B2 = Blist[1]
+
+    #        difflist = []
+    #        Alist = []
+    #        for A in subsets:
+    #            A = self.getMeasuredVarList(A)
+    #            assert len(A) == k, "A is not k length"
+    #            assert len(set(A).intersection(set(B1))) == 0, "A overlap with B1"
+    #            assert len(set(A).intersection(set(B2))) == 0, "A overlap with B2"
+
+    #            if not sample:
+    #                diff = self.g.infoDist(A, B1) - self.g.infoDist(A, B2)
+    #                difflist.append(diff)
+    #                Alist.append(set(A)-S)
+
+    #        for diff in difflist:
+    #            if not isclose(diff, difflist[0]):
+    #                print(f"Not all belong to a cluster")
+    #                print(*zip(difflist, Alist))
 
 
     # Algorithm to find the latent structure
@@ -210,9 +327,9 @@ class StructureFinder:
                 anyFound, insufficientVars = self.runStructuralRankTest(k=k, 
                         run=run, sample=sample)
 
-                #self.verifyClusters(k=k, run=run, sample=sample)
+                self.verifyClusters1(run=run, sample=sample)
+                #self.l.mergeTempSets()
                 self.l.confirmTempSets() 
-                #self.l.addToLatentSet(Vs, k)
 
                 foundList.append(anyFound)
                 k += 1

@@ -73,17 +73,13 @@ def printGraph(model, outpath):
 
 if __name__ == "__main__":
 
-    # Run Trials
-    #nTrials = 1
-    #sampleSizes = [1000]
-    #scores = runTests(scenario5, nTrials, sampleSizes, alpha=0.05, verbose=True)
 
     sampleSize = 2000
-    scenario = "5b"
+    scenario = "3a"
     trials = 1
 
     for trial in range(trials):
-        g = scenario5b()
+        g = scenario3a()
         model = StructureFinder(g, alpha=0.05)
         df = g.generateData(n=sampleSize)
         model.addSample(df)
