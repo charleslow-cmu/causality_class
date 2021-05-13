@@ -12,32 +12,56 @@ class LatentGroups():
         self.activeSet = set([MinimalGroup(x) for x in X])
         self.latentDict = {}
         self.tempDict = {}
-        self.tempSet = []
+        self.tempSet = {}
         self.invertedDict = {}
         self.strayChildren = {}
 
     # When testing for k-AtomicGroups, as long as we have
-    # overlap of 1 element, we merge them
+    # overlap of 1 element that is newly found, we merge them
     # Need to merge, otherwise we create unnecessary latent vars
+    def mergeTempSets(self):
+        for k in self.tempSet:
+            kTempSets = self.tempSet.pop(k)
+            newTempSet = []
+            while len(kTempSets) > 0:
+                Vs = kTempSets.pop()
+                overlap = False
+                for i, tempSet in enumerate(newTempSet):
+                    commonVs = Vs.intersection(tempSet)
 
-    #def mergeTempSets(self, k=k):
-    #    kTempSets = []
-    #    for tempSet, j in self.tempSet:
-    #        if j == k:
-    #            kTempSets.append(tempSet)
+                    # Remove elements that already belong to some AtomicGroup
+                    for V in commonVs:
+                        if self.inLatentDict(V):
+                            commonVs = commonVs - set([V])
+                    if len(commonVs) > 0:
+                        newTempSet[i] = tempSet.union(Vs)
+                        overlap = True
+                        break
+                if not overlap:
+                    newTempSet.append(Vs)
 
-    #    for i, tempSet in enumerate(kTempSets):
-    #        if len(tempSet[0].intersection(Vs)) > 0:
-    #            self.tempSet.pop(i)
+            # Add back to self.tempSet
+            self.tempSet[k] = newTempSet
+
+    # Check if a variable V already belongs to an AtomicGroup
+    def inLatentDict(self, V):
+        for _, values in self.latentDict.items():
+            if V in values["children"]:
+                return True
+        return False
 
 
     def addToTempSet(self, Vs, latentSize=1):
-        self.tempSet.append((Vs, latentSize))
+        if not latentSize in self.tempSet:
+            self.tempSet[latentSize] = []
+        self.tempSet[latentSize].append(Vs)
 
     def removeFromTempSet(self, Vs):
-        for i, tempSet in enumerate(self.tempSet):
-            if len(tempSet[0].intersection(Vs)) > 0:
-                self.tempSet.pop(i)
+        for k in self.tempSet.keys():
+            setlist = self.tempSet[k]
+            for i, tempSet in enumerate(setlist):
+                if len(tempSet.intersection(Vs)) > 0:
+                    self.tempSet[k].pop(i)
 
     # Create a new Minimal Latent Group
     # As: Set of MinimalGroups to add as children
@@ -64,14 +88,12 @@ class LatentGroups():
         overlappedCardinality = setLength(dedupedGroups)
         gap = k - overlappedCardinality
         dedupedGroups = list(dedupedGroups)
-        #print(f"Vs {Vs} | gap {gap}")
 
         # Reject cluster if gap < 0
         if gap < 0:
             print(f"AtomicGroup is {k} but overlap is {overlappedCardinality}")
+            print(f"Vs {Vs} belong to {dedupedGroups}")
             return
-
-        #assert gap >= 0, "Cardinality Gap cannot be negative"
 
         # If Vs just overlaps with exactly 1 Group that is of
         # cardinality k, we can merge them right in
@@ -158,30 +180,12 @@ class LatentGroups():
 
 
     def confirmTempSets(self):
-        for Vs, k in self.tempSet:
-            self.addToDict(Vs, k, temp=False)
-        self.tempSet = []
+        for k in self.tempSet.keys():
+            setlist = self.tempSet[k]
+            for Vs in setlist:
+                self.addToDict(Vs, k, temp=False)
+        self.tempSet = {}
         self.tempDict = deepcopy(self.latentDict)
-
-
-    def addStrayChild(self, Ls, V):
-        newLlist = []
-        for L in Ls:
-            for var in L.vars:
-                newLlist.append(var)
-        newParents = MinimalGroup(newLlist)
-
-        if not newParents in self.strayChildren:
-            self.strayChildren[newParents] = {
-                    "children": set([V]),
-                    "subgroups": Ls
-                    }
-        else:
-            self.strayChildren[newParents]["children"].add(V)
-            self.strayChildren[newParents]["subgroups"].update(Ls)
-
-        # Remove from activeSet
-        self.activeSet = self.activeSet - set([V])
 
 
     # Recursive search for one X per latent var in minimal group L
@@ -239,17 +243,3 @@ class LatentGroups():
 
         return A
 
-
-    # Return a set of all other measures that are not in the groups of 
-    # the provided Vs.
-    # Each v is a MinimalGroup
-    def getAllOtherMeasuresFromGroups(self, Vs=set()):
-
-        # Measures that we should not include
-        Vmeasures = set()
-        for V in Vs:
-            Vmeasures.update(self.pickAllMeasures(V))
-        return self.X - Vmeasures
-            
-    def getAllOtherMeasuresFromXs(self, Xs=set()):
-        return self.X - Xs

@@ -148,11 +148,9 @@ class StructureFinder:
                     gap -= 1
 
             if rankDeficient:
-                self.l.addToDict(Vs, k-gap, temp=True)
+                #self.l.addToDict(Vs, k-gap, temp=True)
                 self.l.addToTempSet(Vs, k-gap)
                 vprint(f"Found cluster {Vs}.", self.verbose)
-                #if run > 1 and k >= 2:
-                #    set_trace()
                 anyFound = True
 
         return (anyFound, insufficientVars)
@@ -327,8 +325,8 @@ class StructureFinder:
                 anyFound, insufficientVars = self.runStructuralRankTest(k=k, 
                         run=run, sample=sample)
 
-                self.verifyClusters1(run=run, sample=sample)
-                #self.l.mergeTempSets()
+                #self.verifyClusters1(run=run, sample=sample)
+                self.l.mergeTempSets()
                 self.l.confirmTempSets() 
 
                 foundList.append(anyFound)
@@ -344,13 +342,14 @@ class StructureFinder:
 
             # Remove variables belonging to a Group from activeSet
             # Set Groups as activeSet
-            for parent, values in self.l.latentDict.items():
+            for parent in self.l.latentDict.keys():
                 self.l.activeSet.add(parent)
+
+            for values in self.l.latentDict.values():
                 self.l.activeSet = setDifference(self.l.activeSet, 
                                                  values["children"])
-                self.l.activeSet = deduplicate(self.l.activeSet)
-
-
+                
+            self.l.activeSet = deduplicate(self.l.activeSet)
             print(f"Active Set: {self.l.activeSet}")
             print(f"{'='*30}")
 
