@@ -6,6 +6,8 @@ from math import sqrt
 import numpy as np
 from scipy.stats import norm
 from itertools import combinations
+from pdb import set_trace
+import IPython
 
 # Miscellaneous functions
 def setLength(varset):
@@ -423,3 +425,28 @@ def getGraph(l):
                 for child in childGroup.vars:
                     G.addEdge(parent, child, type=1)
     return G
+
+
+# Return a powerset of elements up to cardinality k
+def powerset(elements, k):
+    subsets = []
+    for i in range(1, k+1):
+        combs = combinations(elements, i)
+        subsets.extend([set(X) for X in combs])
+    return subsets
+
+
+def scombinations(elements, k):
+    combs = [set(X) for X in combinations(elements, k)]
+    if len(combs) == 0:
+        return [set()]
+    return combs
+
+# Given two lists of sets, get the cartesian product
+def cartesian(list1, list2):
+    result = []
+    for l1 in list1:
+        for l2 in list2:
+            result.append(l1.union(l2))
+    return result
+

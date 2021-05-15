@@ -71,17 +71,34 @@ def printGraph(model, outpath):
     graphs[0].set_size('"8,8!"')
     graphs[0].write_png(outpath)
 
-if __name__ == "__main__":
 
-    sampleSize = 2000
-    scenario = "6"
-    trials = 1
-
-    for trial in range(trials):
+def runScenario(scenario=None):
+    def run(scenario):
         g = scenarios[scenario]()
         model = StructureFinder(g, alpha=0.05)
-        df = g.generateData(n=sampleSize)
-        model.addSample(df)
+        model.addSample(g.generateData(2000))
         model.findLatentStructure(verbose=True, sample=False)
+        printGraph(model, f'plots/scenario{scenario}.png')
 
-        printGraph(model, f'plots/scenario{scenario}_{trial}.png')
+    if scenario is None:
+        for scenario in scenarios.keys():
+            run(scenario)
+    else:
+        run(scenario)
+
+
+if __name__ == "__main__":
+    runScenario("1")
+
+    #sampleSize = 2000
+    #scenario = "7"
+    #trials = 1
+
+    #for trial in range(trials):
+    #    g = scenarios[scenario]()
+    #    model = StructureFinder(g, alpha=0.05)
+    #    df = g.generateData(n=sampleSize)
+    #    model.addSample(df)
+    #    model.findLatentStructure2(verbose=True, sample=False)
+
+    #    printGraph(model, f'plots/scenario{scenario}_{trial}.png')

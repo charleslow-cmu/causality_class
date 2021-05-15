@@ -3,6 +3,8 @@ from numpy.linalg import matrix_rank
 import pandas as pd
 from math import sqrt, log
 from pdb import set_trace
+import sys
+import IPython
 
 class GaussianGraph:
     def __init__(self):
@@ -96,6 +98,37 @@ class GaussianGraph:
         det3 = abs(np.linalg.det(covB))
         dist = -log(det1 / sqrt(det2*det3))
         return dist 
+
+    # Given a variable set A of size k and B with size >= k
+    # Take a random combination of B
+    # Generate cov(A, B) and var(B)
+    def generateCovariances(self, A, B):
+        k = len(A)
+        j = len(B)
+        assert j >= k, "B must have greater cardinality"
+        covAA = self.subcovariance(A, A)
+        covAB = self.subcovariance(A, B)
+        covBB = self.subcovariance(B, B)
+
+        # Make random coefficients
+        coefs = np.random.randn(k, j)
+        newCovAB = covAB @ coefs.T
+        newCovBB = coefs @ covBB @ coefs.T
+        return covAA, newCovAB, newCovBB
+
+
+    def infoDistGen(self, A, B):
+        cov = self.subcovariance(A, B)
+        covA = self.subcovariance(A, A)
+        covB = self.subcovariance(B, B)
+        u, d, v = np.linalg.svd(cov)
+        tol = d.max() * max(cov.shape) * sys.float_info.epsilon
+        d = d[d > tol]
+        det2 = np.linalg.det(covA)
+        det3 = np.linalg.det(covB)
+        dist = -sum(np.log(d)) + 0.5*(log(det2) + log(det3))
+        return dist 
+
 
     def generateData(self, n=100):
         df = pd.DataFrame(columns = self.xvars)

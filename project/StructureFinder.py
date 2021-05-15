@@ -10,6 +10,7 @@ from RankTester import RankTester
 from CCARankTester import CCARankTester
 import IPython
 from itertools import product
+from statsmodels.multivariate.cancorr import CanCorr
 
 class StructureFinder:
 
@@ -25,12 +26,24 @@ class StructureFinder:
         self.df = df
         self.rankTester = CCARankTester(df, alpha=self.alpha)
 
-    # Bootstrap sample our data and calculate covariance matrix
-    # k times
-    def prepareBootstrapCovariances(self, k=10):
-        for _ in range(k):
-            cov = bootStrapCovariance(self.df)
-            self.covList.append(cov)
+    def cca(self, Vs):
+        remainingVs = setDifference(self.l.activeSet, Vs)
+        cols = list(self.df.columns)
+
+        As = set()
+        for V in Vs:
+            As.update(self.l.pickAllMeasures(V))
+        As = self.getMeasuredVarList(As)
+                
+        Bs = set()
+        for V in remainingVs:
+            Bs.update(self.l.pickAllMeasures(V))
+        Bs = self.getMeasuredVarList(Bs)
+
+        X = self.df.loc[:, As]
+        Y = self.df.loc[:, Bs]
+        print(f"CCA for {As} vs {Bs}")
+        return CanCorr(X, Y)
 
     # Test null hypothesis that rank(subcovariance[A,B]) <= rk
     # A, B: Columns for testing
@@ -147,169 +160,95 @@ class StructureFinder:
                 if not rankDeficient2:
                     gap -= 1
 
+            # How to remove variables that are not important to 
+            # the rank, using CCA?
             if rankDeficient:
-                #self.l.addToDict(Vs, k-gap, temp=True)
-                self.l.addToTempSet(Vs, k-gap)
-                vprint(f"Found cluster {Vs}.", self.verbose)
-                anyFound = True
+                cca = self.cca(Vs)
+                if k-gap == 2:
+                    IPython.embed(); exit(1)
+                test = self.verifyCluster(Vs, k-gap)
+                if test:
+                    self.l.addToTempSet(Vs, k-gap)
+                    vprint(f"Found {k-gap}-cluster {Vs}.", self.verbose)
+                    anyFound = True
 
         return (anyFound, insufficientVars)
 
 
-    def verifyClusters1(self, run=1, sample=False):
-        vprint(f"Verifying Clusters...", self.verbose)
+    # Used Generalised Information Distance to Verify if a Cluster is true
+    def verifyCluster(self, Vs, k, trials=20):
+        print(f"Verifying cluster {Vs} of size {k}")
 
-        # Active variables (not part of any k group)
-        clusteredVars = set()
-        for p, v in self.l.tempDict.items():
-            clusteredVars.update(v["children"])
-        activeVars = setDifference(self.l.activeSet, clusteredVars)
+        # k=1 is always true cluster 
+        if k == 1:
+            return True
 
-        for Vs, k in self.l.tempSet:
+        # Assemble A1 and A2
+        A1 = set()
+        for V in Vs:
+            A1.update(self.l.pickRepresentativeMeasures(self.l.latentDict, V))
+        while len(A1) > k:
+            A1.pop()
+        usedX = next(iter(A1))
 
-            # No need to test k=1
-            if k == 1:
-                continue
+        A2 = set()
+        for V in Vs:
+            A2.update(self.l.pickRepresentativeMeasures(self.l.latentDict, V, usedX))
+        while len(A2) > k:
+            A2.pop()
+        A = A1.union(A2)
 
-            # Find the entry in tempDict
-            for parent, values in self.l.tempDict.items():
-                if values["children"] <= Vs:
-                    break
-            subgroups = values["subgroups"]
-            children = values["children"]
+        # Current Method of Bset is not good enough
+        # Can still get low rank
 
-            # Assemble subgroup vars
-            S = set()
-            for subgroup in subgroups:
-                if not subgroup in children:
-                    S.update(self.l.pickAllMeasures(subgroup))
+        # Assemble the B set
+        # Each entry in the Blist is a list of sets of Vs
+        # i.e. [[Vs1, Vs2, ...], [Vs1, Vs2, ...]]
+        # Such that each Vs1 is of size j corresponding to their cluster
+        Blist = []
+        dlist = []
 
-            # Assemble the B group
-            B = set()
-            for V in activeVars:
-                B.update(self.l.pickAllMeasures(V))
+        # Pick vars from k-1 or smaller groups
+        for parent, values in self.l.latentDict.items():
+            Vlist = self.l.pickKSets(parent, usedXs=A)
+            Blist.append(Vlist)
 
-            for p, v in self.l.tempDict.items():
-                if (p != parent) and (not p in subgroups):
-                    B.update(self.l.pickRepresentativeMeasures(self.l.tempDict, p))
+        # Pick vars from activeSet
+        remainingVs = self.l.activeSet - Vs
+        for parent, values in self.l.latentDict.items():
+            V = values["children"]
+            remainingVs = setDifference(remainingVs, V)
+        subsets = generateSubset(remainingVs, k)
+        Blist.append(subsets)
+
+        # Now take cartesian product of all in Blist
+        Bsets = [reduce(set.union, B) for B in product(*Blist)]
+
+        # Calculate infoDist
+        A1 = self.getMeasuredVarList(A1)
+        A2 = self.getMeasuredVarList(A2)
+        for i, B in enumerate(Bsets):
             B = self.getMeasuredVarList(B)
+            d1 = self.g.infoDistGen(A1, B)
+            d2 = self.g.infoDistGen(A2, B)
+            dlist.append(d1-d2)
 
-            # Test all subsets
-            Slen = setLength(subgroups)
-            gap = max(1, k-Slen)
-            for childSet in generateSubset(children, k=gap):
-                A = set()
-                for child in childSet:
-                    A.update(self.l.pickAllMeasures(child))
-                A = A.union(S)
-                Alist = self.getMeasuredVarList(A)
-                rankDeficient = self.g.rankTest(Alist, B, k-1)
-                if rankDeficient:
-                    print(f"False cluster! {A}")
-                    self.l.removeFromTempSet(A)
+            if i >= trials:
+                break
 
+        # Check if all dlist is the same
+        # If true, it is a real cluster
+        test = True
+        for i in range(1, len(dlist)):
+            j = i-1
+            if not isclose(dlist[i], dlist[j]):
+                test = False
+                break
 
-    # Verify if all k+1 subsets in a cluster get the rank deficiency
-    #def verifyClusters2(self, run=1, sample=False):
-    #    vprint(f"Verifying Clusters...", self.verbose)
+        if k == 3:
+            set_trace()
 
-    #    # Active variables (not part of k groups)
-    #    clusteredVars = set()
-    #    for p, v in self.l.tempDict.items():
-    #        clusteredVars.update(v["children"])
-    #    activeVars = setDifference(self.l.activeSet, clusteredVars)
-
-    #    for Vs, k in self.l.tempSet:
-
-    #        # Find the entry in tempDict
-    #        for parent, values in self.l.tempDict.items():
-    #            if values["children"] <= Vs:
-    #                break
-    #        subgroups = values["subgroups"]
-    #        children = values["children"]
-
-    #        # Assemble subgroup vars
-    #        S = set()
-    #        for subgroup in subgroups:
-    #            if not subgroup in children:
-    #                S.update(self.l.pickAllMeasures(subgroup))
-
-    #        # Take up to k-1 vars from S
-    #        # Take remaining vars from A
-    #        # The remaining variables for A take from children
-    #        j = 0
-    #        Ssubsets = []
-    #        if len(S) > 0:
-    #            while True:
-    #                j += 1
-    #                Ssubsets = generateSubset(S, k=k-j)
-    #                if len(Ssubsets) > 0:
-    #                    break
-    #                assert k-j >= 0, "k-j is negative"
-
-    #        if len(S) > 0:
-    #            gap = j
-    #        else:
-    #            gap = k
-    #        Asubsets = generateSubset(children, k=gap)
-
-
-    #        # Combine Ssubsets and Asubsets
-    #        subsets = []
-    #        for As in Asubsets:
-    #            if len(Ssubsets) > 0:
-    #                for Ss in Ssubsets:
-    #                    subset = As.union(Ss)
-    #                    subsets.append(subset)
-    #            else:
-    #                subsets.append(As)
-    #        print(subsets)
-
-    #        # Assemble the B group
-    #        B = set()
-    #        for V in activeVars:
-    #            B.update(self.l.pickRepresentativeMeasures(self.l.latentDict, V))
-
-    #        for p, v in self.l.tempDict.items():
-    #            if (p != parent) and (not p in subgroups):
-    #                B.update(self.l.pickRepresentativeMeasures(self.l.tempDict, p))
-
-    #        # Take two distinct k subsets from B that are not rankDeficient
-    #        Bsubsets = generateSubset(B, k)
-    #        Blist = []
-    #        for Bp in Bsubsets:
-    #            Bp = self.getMeasuredVarList(Bp)
-    #            fullrank = True
-    #            for A in subsets:
-    #                A = self.getMeasuredVarList(A)
-    #                rankDeficient = self.g.rankTest(A, Bp, k-1)
-    #                if rankDeficient:
-    #                    fullrank = False
-    #                    break
-    #            if fullrank:
-    #                Blist.append(Bp)
-    #            if len(Blist) >= 2:
-    #                break
-    #        B1 = Blist[0]
-    #        B2 = Blist[1]
-
-    #        difflist = []
-    #        Alist = []
-    #        for A in subsets:
-    #            A = self.getMeasuredVarList(A)
-    #            assert len(A) == k, "A is not k length"
-    #            assert len(set(A).intersection(set(B1))) == 0, "A overlap with B1"
-    #            assert len(set(A).intersection(set(B2))) == 0, "A overlap with B2"
-
-    #            if not sample:
-    #                diff = self.g.infoDist(A, B1) - self.g.infoDist(A, B2)
-    #                difflist.append(diff)
-    #                Alist.append(set(A)-S)
-
-    #        for diff in difflist:
-    #            if not isclose(diff, difflist[0]):
-    #                print(f"Not all belong to a cluster")
-    #                print(*zip(difflist, Alist))
+        return test
 
 
     # Algorithm to find the latent structure
@@ -325,7 +264,6 @@ class StructureFinder:
                 anyFound, insufficientVars = self.runStructuralRankTest(k=k, 
                         run=run, sample=sample)
 
-                #self.verifyClusters1(run=run, sample=sample)
                 self.l.mergeTempSets()
                 self.l.confirmTempSets() 
 
@@ -354,6 +292,63 @@ class StructureFinder:
             print(f"{'='*30}")
 
             if not any(foundList):
+                break
+
+
+
+
+    # Run search until convergence on each k before moving on
+    def findLatentStructure2(self, verbose=True, sample=False):
+        self.verbose = verbose
+        self.l = LatentGroups(self.g.xvars)
+        run = 1
+
+        k = 1
+        while True:
+            foundList = []
+
+            # Run until convergence for this k value
+            while True:
+                anyFound, insufficientVars = self.runStructuralRankTest(k=k, 
+                        run=run, sample=sample)
+                self.l.mergeTempSets()
+                self.l.confirmTempSets() 
+
+                # Remove variables belonging to a Group from activeSet
+                # Set Groups as activeSet
+                for parent in self.l.latentDict.keys():
+                    self.l.activeSet.add(parent)
+
+                for values in self.l.latentDict.values():
+                    self.l.activeSet = setDifference(self.l.activeSet, 
+                                                     values["children"])
+                
+                self.l.activeSet = deduplicate(self.l.activeSet)
+                print(f"Active Set: {self.l.activeSet}")
+
+                foundList.append(anyFound)
+                if not anyFound:
+                    break
+
+                if insufficientVars:
+                    break
+
+            print(f"{'='*10} End of Run {run} {'='*10}")
+            print(f"Current State:")
+            pprint(self.l.latentDict, self.verbose)
+            run += 1
+            print(f"{'='*30}")
+
+            # Move on to new k value
+            k += 1
+
+            # If we found anything new in this search, reset k=1
+            # Basically k can only advance if nothing new is found in all
+            # smaller values
+            if any(foundList):
+                k = 1
+
+            if k > setLength(self.l.activeSet)/2:
                 break
 
 

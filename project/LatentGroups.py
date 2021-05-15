@@ -11,10 +11,8 @@ class LatentGroups():
         self.X = set([MinimalGroup(x) for x in X])
         self.activeSet = set([MinimalGroup(x) for x in X])
         self.latentDict = {}
-        self.tempDict = {}
         self.tempSet = {}
         self.invertedDict = {}
-        self.strayChildren = {}
 
     # When testing for k-AtomicGroups, as long as we have
     # overlap of 1 element that is newly found, we merge them
@@ -66,14 +64,8 @@ class LatentGroups():
     # Create a new Minimal Latent Group
     # As: Set of MinimalGroups to add as children
     # If Ls is empty, we simply create new latent variables
-    def addToDict(self, Vs, latentSize=1, temp=False):
-
-        if temp:
-            d = self.tempDict
-        else:
-            d = self.latentDict
-
-        #k = setLength(Vs) - 1 # size of Group
+    def addToDict(self, Vs, latentSize=1):
+        d = self.latentDict
         k = latentSize
 
         # Find earlier discovered groups with children that
@@ -183,17 +175,53 @@ class LatentGroups():
         for k in self.tempSet.keys():
             setlist = self.tempSet[k]
             for Vs in setlist:
-                self.addToDict(Vs, k, temp=False)
+                self.addToDict(Vs, k)
         self.tempSet = {}
-        self.tempDict = deepcopy(self.latentDict)
+
+
+    def pickKSets(self, V, setlist=[set()], usedXs=set()):
+
+        assert isinstance(V, MinimalGroup), f"{V} is not a MinimalGroup."
+        if not V.isLatent():
+            return [set([V])]
+    
+        # Get values
+        values = self.latentDict[V]
+        subgroups = values["subgroups"]
+        children = values["children"]
+        measures = set()
+        for child in children:
+            if not (child.isLatent() or child in usedXs):
+                measures.add(child)
+    
+        # Get all combinations of measured children
+        subgroupCardinality = setLength(subgroups)
+        childCardinality = len(V) - subgroupCardinality
+        subsets = scombinations(measures, childCardinality)
+
+        # Add measures
+        setlist = cartesian(setlist, subsets)
+
+        # Hit leaf node, return setlist
+        if subgroupCardinality <= 0:
+            return setlist
+
+        # Continue search if subgroups exist
+        if subgroupCardinality > 0:
+            for subgroup in subgroups:
+                setlist = self.pickKSets(subgroup, setlist)
+    
+        return setlist
 
 
     # Recursive search for one X per latent var in minimal group L
     def pickRepresentativeMeasures(self, latentDict, L, usedXs=set()):
         assert isinstance(L, MinimalGroup), "L is not a MinimalGroup."
+        if isinstance(usedXs, MinimalGroup):
+            usedXs = set([usedXs])
 
         if not L.isLatent():
-            return set([L])
+            return set([L]) - usedXs
 
         A = set()
         values = latentDict[L]
@@ -216,6 +244,8 @@ class LatentGroups():
 
         return A
 
+
+
     # As opposed to pickRepresentativeMeasures, pickAllMeasures 
     # recursively picks all measured variables that are in the subgroups
     # of the provided MinimalGroup.
@@ -235,11 +265,6 @@ class LatentGroups():
         for C in values["children"]:
             if not C.isLatent():
                 A.add(C)
-
-        # Add Stray Children that belong
-        for parent, values in self.strayChildren.items():
-            if parent.vars <= L.vars:
-                A.update(values["children"])
 
         return A
 

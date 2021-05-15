@@ -339,6 +339,26 @@ def scenario7():
     return g
 
 
+
+
+def scenario8():
+    g = GaussianGraph()
+    g.add_variable("L1", None)
+    g.add_variable("L2", "L1")
+    g.add_variable("L3", "L1")
+    g.add_variable("L4", "L1")
+    g.add_variable("L5", "L2")
+
+    g.add_variable("X1", "L3")
+    g.add_variable("X2", "L3")
+    g.add_variable("X3", "L4")
+    g.add_variable("X4", "L4")
+    g.add_variable("X5", ["L4", "L5"])
+    g.add_variable("X6", ["L4", "L5"])
+    g.add_variable("X7", "L2")
+    return g
+
+
 scenarios = {
         "0a": scenario0a,
         "0b": scenario0b,
@@ -352,5 +372,6 @@ scenarios = {
         "5a": scenario5a,
         "5b": scenario5b,
         "6": scenario6,
-        "7": scenario7
+        "7": scenario7,
+        "8": scenario8
         }
