@@ -26,25 +26,6 @@ class StructureFinder:
         self.df = df
         self.rankTester = CCARankTester(df, alpha=self.alpha)
 
-    def cca(self, Vs):
-        remainingVs = setDifference(self.l.activeSet, Vs)
-        cols = list(self.df.columns)
-
-        As = set()
-        for V in Vs:
-            As.update(self.l.pickAllMeasures(V))
-        As = self.getMeasuredVarList(As)
-                
-        Bs = set()
-        for V in remainingVs:
-            Bs.update(self.l.pickAllMeasures(V))
-        Bs = self.getMeasuredVarList(Bs)
-
-        X = self.df.loc[:, As]
-        Y = self.df.loc[:, Bs]
-        print(f"CCA for {As} vs {Bs}")
-        return CanCorr(X, Y)
-
     # Test null hypothesis that rank(subcovariance[A,B]) <= rk
     # A, B: Columns for testing
     # Returns True if we fail to reject the null
@@ -163,9 +144,6 @@ class StructureFinder:
             # How to remove variables that are not important to 
             # the rank, using CCA?
             if rankDeficient:
-                cca = self.cca(Vs)
-                if k-gap == 2:
-                    IPython.embed(); exit(1)
                 test = self.verifyCluster(Vs, k-gap)
                 if test:
                     self.l.addToTempSet(Vs, k-gap)
@@ -183,58 +161,28 @@ class StructureFinder:
         if k == 1:
             return True
 
-        # Assemble A1 and A2
-        A1 = set()
-        for V in Vs:
-            A1.update(self.l.pickRepresentativeMeasures(self.l.latentDict, V))
-        while len(A1) > k:
-            A1.pop()
-        usedX = next(iter(A1))
+        # Generate k combinations of Vs
+        subsets = generateSubset(Vs, k=k)
 
-        A2 = set()
-        for V in Vs:
-            A2.update(self.l.pickRepresentativeMeasures(self.l.latentDict, V, usedX))
-        while len(A2) > k:
-            A2.pop()
-        A = A1.union(A2)
+        # Test each k combination
+        n = len(subsets)
+        for i in range(n):
+            subset = subsets[i]
 
-        # Current Method of Bset is not good enough
-        # Can still get low rank
+            A = set()
+            for V in subset:
+                A.update(self.l.pickRepresentativeMeasures(self.l.latentDict, V))
 
-        # Assemble the B set
-        # Each entry in the Blist is a list of sets of Vs
-        # i.e. [[Vs1, Vs2, ...], [Vs1, Vs2, ...]]
-        # Such that each Vs1 is of size j corresponding to their cluster
-        Blist = []
-        dlist = []
-
-        # Pick vars from k-1 or smaller groups
-        for parent, values in self.l.latentDict.items():
-            Vlist = self.l.pickKSets(parent, usedXs=A)
-            Blist.append(Vlist)
-
-        # Pick vars from activeSet
-        remainingVs = self.l.activeSet - Vs
-        for parent, values in self.l.latentDict.items():
-            V = values["children"]
-            remainingVs = setDifference(remainingVs, V)
-        subsets = generateSubset(remainingVs, k)
-        Blist.append(subsets)
-
-        # Now take cartesian product of all in Blist
-        Bsets = [reduce(set.union, B) for B in product(*Blist)]
-
-        # Calculate infoDist
-        A1 = self.getMeasuredVarList(A1)
-        A2 = self.getMeasuredVarList(A2)
-        for i, B in enumerate(Bsets):
+            # Pick B set from all other vars
+            B = set()
+            remainingVs = setDifference(self.l.activeSet, subset)
+            for V in remainingVs:
+            # Calculate infoDist
+            A = self.getMeasuredVarList(A)
             B = self.getMeasuredVarList(B)
-            d1 = self.g.infoDistGen(A1, B)
-            d2 = self.g.infoDistGen(A2, B)
-            dlist.append(d1-d2)
+            test = self.g.infoDistRandom(A, B)
 
-            if i >= trials:
-                break
+            set_trace()
 
         # Check if all dlist is the same
         # If true, it is a real cluster
@@ -245,8 +193,7 @@ class StructureFinder:
                 test = False
                 break
 
-        if k == 3:
-            set_trace()
+        set_trace()
 
         return test
 

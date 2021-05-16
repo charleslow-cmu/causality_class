@@ -89,32 +89,45 @@ class GaussianGraph:
         test = matrix_rank(cov) <= rk
         return test
 
-    def infoDist(self, A, B):
-        cov = self.subcovariance(A, B)
-        covA = self.subcovariance(A, A)
-        covB = self.subcovariance(B, B)
-        det1 = abs(np.linalg.det(cov))
-        det2 = abs(np.linalg.det(covA))
-        det3 = abs(np.linalg.det(covB))
+    def infoDist(self, covAA, covBB, covAB):
+        det1 = abs(np.linalg.det(covAB))
+        det2 = abs(np.linalg.det(covAA))
+        det3 = abs(np.linalg.det(covBB))
         dist = -log(det1 / sqrt(det2*det3))
         return dist 
 
     # Given a variable set A of size k and B with size >= k
-    # Take a random combination of B
-    # Generate cov(A, B) and var(B)
-    def generateCovariances(self, A, B):
+    def infoDistRandom(self, A, B, trials=10):
         k = len(A)
         j = len(B)
         assert j >= k, "B must have greater cardinality"
-        covAA = self.subcovariance(A, A)
-        covAB = self.subcovariance(A, B)
-        covBB = self.subcovariance(B, B)
+        covAA = self.subcovariance(A, A) # (k, k)
+        covBB = self.subcovariance(B, B) # (j, j)
+        covAB = self.subcovariance(A, B) # (k, j)
 
-        # Make random coefficients
-        coefs = np.random.randn(k, j)
-        newCovAB = covAB @ coefs.T
-        newCovBB = coefs @ covBB @ coefs.T
-        return covAA, newCovAB, newCovBB
+        # Make random coefficients for A
+        coefA1 = np.random.randn(k, k)
+        coefA2 = np.random.randn(k, k)
+
+        # Repeatedly trial for different values of B
+        dlist = []
+        for _ in range(trials):
+
+            # Make random coefficients for B
+            coefB = np.random.randn(k, j)
+            covs1 = self.makeCov(coefA1, coefB, covAA, covBB, covAB)
+            covs2 = self.makeCov(coefA2, coefB, covAA, covBB, covAB)
+            d1 = self.infoDist(covs1[0], covs1[1], covs1[2])
+            d2 = self.infoDist(covs2[0], covs2[1], covs2[2])
+            dlist.append(d1-d2)
+        return dlist
+
+
+    def makeCov(self, coefA, coefB, covAA, covBB, covAB):
+        newCovAA = coefA @ covAA @ coefA.T # (k, k)
+        newCovBB = coefB @ covBB @ coefB.T # (k, k)
+        newCovAB = coefA @ covAB @ coefB.T # (k, k)
+        return newCovAA, newCovBB, newCovAB
 
 
     def infoDistGen(self, A, B):
