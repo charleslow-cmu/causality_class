@@ -450,3 +450,16 @@ def cartesian(list1, list2):
             result.append(l1.union(l2))
     return result
 
+# Compare two rankDicts
+def cmpDict(d1, d2):
+    mismatches = {}
+    same = True
+    for key in d1:
+        if d1[key] != d2[key]:
+            mismatches[key] = (d1[key], d2[key])
+            same = False
+
+        if len(mismatches) > 50:
+            break
+    return same, mismatches
+

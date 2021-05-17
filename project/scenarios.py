@@ -257,10 +257,10 @@ def scenario5b():
     g = GaussianGraph()
     g.add_variable("L1", None)
     g.add_variable("L2", None)
-    g.add_variable("L3", "L1")
+    g.add_variable("L3", ["L1", "L2"])
     g.add_variable("L4", ["L1", "L2"])
-    g.add_variable("L5", "L2")
-    g.add_variable("L6", "L1")
+    g.add_variable("L5", ["L1", "L2"])
+    g.add_variable("L6", ["L1", "L2"])
     g.add_variable("L7", ["L1", "L2"])
     g.add_variable("L8", ["L1", "L2"])
 
@@ -309,7 +309,7 @@ def scenario6():
     return g
 
 
-def scenario7():
+def scenario7a():
     g = GaussianGraph()
     g.add_variable("L1", None)
     g.add_variable("L2", "L1")
@@ -339,6 +339,52 @@ def scenario7():
     return g
 
 
+def scenario7b():
+    g = GaussianGraph()
+    g.add_variable("L1", None)
+    g.add_variable("L2", "L1")
+    g.add_variable("L3", "L1")
+    g.add_variable("L4", "L2")
+    g.add_variable("L5", "L2")
+    g.add_variable("L6", "L3")
+    g.add_variable("L7", "L3")
+
+    g.add_variable("X1", ["L4", "L5"])
+    g.add_variable("X2", ["L4", "L5"])
+    g.add_variable("X3", ["L4", "L5"])
+    g.add_variable("X4", ["L4", "L5"])
+    g.add_variable("X7", ["L6", "L7"])
+    g.add_variable("X8", ["L6", "L7"])
+    g.add_variable("X9", ["L6", "L7"])
+    g.add_variable("X10", ["L6", "L7"])
+    g.add_variable("X13", "L2")
+    g.add_variable("X14", "L1")
+    g.add_variable("X15", "L3")
+    return g
+
+
+
+def scenario7c():
+    g = GaussianGraph()
+    g.add_variable("L2", None)
+    g.add_variable("L3", "L2")
+    g.add_variable("L4", "L2")
+    g.add_variable("L5", "L2")
+    g.add_variable("L6", "L3")
+    g.add_variable("L7", "L3")
+
+    g.add_variable("X1", ["L4", "L5"])
+    g.add_variable("X2", ["L4", "L5"])
+    g.add_variable("X3", ["L4", "L5"])
+    g.add_variable("X4", ["L4", "L5"])
+    g.add_variable("X7", ["L6", "L7"])
+    g.add_variable("X8", ["L6", "L7"])
+    g.add_variable("X9", ["L6", "L7"])
+    g.add_variable("X10", ["L6", "L7"])
+    g.add_variable("X13", "L2")
+    g.add_variable("X14", ["L2", "L3"])
+    g.add_variable("X15", "L3")
+    return g
 
 
 def scenario8():
@@ -359,6 +405,36 @@ def scenario8():
     return g
 
 
+
+def scenario9a():
+    g = GaussianGraph()
+    g.add_variable("L1", None)
+    g.add_variable("L2", "L1")
+    g.add_variable("L3", "L1")
+
+    g.add_variable("X1", "L2")
+    g.add_variable("X2", "L1")
+    g.add_variable("X3", "L3")
+    g.add_variable("X4", "L2")
+    g.add_variable("X5", "L3")
+    g.add_variable("X6", "L3")
+    return g
+
+
+
+def scenario9b():
+    g = GaussianGraph()
+    g.add_variable("L1", None)
+    g.add_variable("L2", "L1")
+
+    g.add_variable("X1", "L2")
+    g.add_variable("X2", ["L1", "L2"])
+    g.add_variable("X3", "L1")
+    g.add_variable("X4", "L2")
+    g.add_variable("X5", "L1")
+    g.add_variable("X6", "L1")
+    return g
+
 scenarios = {
         "0a": scenario0a,
         "0b": scenario0b,
@@ -372,6 +448,10 @@ scenarios = {
         "5a": scenario5a,
         "5b": scenario5b,
         "6": scenario6,
-        "7": scenario7,
-        "8": scenario8
+        "7a": scenario7a,
+        "7b": scenario7b,
+        "7c": scenario7c,
+        "8": scenario8,
+        "9a": scenario9a,
+        "9b": scenario9b
         }

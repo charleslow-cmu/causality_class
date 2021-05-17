@@ -88,7 +88,7 @@ def runScenario(scenario=None):
 
 
 if __name__ == "__main__":
-    runScenario("1")
+    runScenario("5b")
 
     #sampleSize = 2000
     #scenario = "7"

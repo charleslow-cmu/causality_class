@@ -12,7 +12,25 @@ class LatentGroups():
         self.activeSet = set([MinimalGroup(x) for x in X])
         self.latentDict = {}
         self.tempSet = {}
-        self.invertedDict = {}
+
+    def findChild(self, V):
+        for parent, values in self.latentDict.items():
+            if V in values["children"]:
+                return parent
+
+    def updateActiveSet(self):
+
+        # Remove variables belonging to a Group from activeSet
+        # Set Groups as activeSet
+        for parent in self.latentDict.keys():
+            self.activeSet.add(parent)
+
+        for values in self.latentDict.values():
+            self.activeSet = setDifference(self.activeSet, 
+                                             values["children"])
+            
+        self.activeSet = deduplicate(self.activeSet)
+
 
     # When testing for k-AtomicGroups, as long as we have
     # overlap of 1 element that is newly found, we merge them
@@ -61,6 +79,24 @@ class LatentGroups():
                 if len(tempSet.intersection(Vs)) > 0:
                     self.tempSet[k].pop(i)
 
+    
+    # Remove a cluster
+    def dissolve(self, V):
+        assert isinstance(V, MinimalGroup), f"{V} must be MinimalGroup"
+        print(f"Dissolving {V}...")
+        values = self.latentDict.pop(V)
+        self.activeSet.update(values["children"])
+        self.activeSet = setDifference(self.activeSet, set([V]))
+        return values["children"], values["subgroups"]
+
+
+    # Recursively dissolve to the leaves of this branch
+    def dissolveR(self, L):
+        Vs, subgroups = self.dissolve(L)
+        for subgroup in subgroups:
+            self.dissolveR(subgroup)
+
+
     # Create a new Minimal Latent Group
     # As: Set of MinimalGroups to add as children
     # If Ls is empty, we simply create new latent variables
@@ -81,10 +117,13 @@ class LatentGroups():
         gap = k - overlappedCardinality
         dedupedGroups = list(dedupedGroups)
 
-        # Reject cluster if gap < 0
+        # if gap is < 0, something is wrong with the other clusters
+        # We dissolve all of them
         if gap < 0:
-            print(f"AtomicGroup is {k} but overlap is {overlappedCardinality}")
-            print(f"Vs {Vs} belong to {dedupedGroups}")
+            print(f"AtomicGroup {Vs} is {k} but overlap is {overlappedCardinality}")
+            for group in dedupedGroups:
+                print(f"Dissolving {group}...")
+                self.dissolve(group)
             return
 
         # If Vs just overlaps with exactly 1 Group that is of
@@ -117,12 +156,12 @@ class LatentGroups():
             d[parent] = values
 
             # Update corresponding entry in invertedDict
-            for existingGroup in self.invertedDict.keys():
-                if oldChildren <= existingGroup:
-                    self.invertedDict.pop(frozenset(existingGroup))
-                    newGroup = values["children"].union(existingGroup)
-                    self.invertedDict[frozenset(newGroup)] = len(parent)
-                    break
+            #for existingGroup in self.invertedDict.keys():
+            #    if oldChildren <= existingGroup:
+            #        self.invertedDict.pop(frozenset(existingGroup))
+            #        newGroup = values["children"].union(existingGroup)
+            #        self.invertedDict[frozenset(newGroup)] = len(parent)
+            #        break
             return
 
         # If Vs overlaps with more than 1 Group
@@ -165,10 +204,11 @@ class LatentGroups():
                 }
 
         # Add to invertedDict
-        Vs = deepcopy(Vs)
-        for subgroup in subgroups:
-            Vs.update(d[subgroup]["children"])
-        self.invertedDict[frozenset(Vs)] = len(newParents)
+        #Vs = deepcopy(Vs)
+        #for subgroup in subgroups:
+        #    Vs.update(d[subgroup]["children"])
+        #self.invertedDict[frozenset(Vs)] = len(newParents)
+
 
 
     def confirmTempSets(self):

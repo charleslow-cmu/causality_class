@@ -5,6 +5,7 @@ from math import sqrt, log
 from pdb import set_trace
 import sys
 import IPython
+from itertools import combinations
 
 class GaussianGraph:
     def __init__(self):
@@ -13,6 +14,7 @@ class GaussianGraph:
         self.lvars = []
         self.L = None
         self.phi = []
+        self.cov = None
 
     def random_variance(self):
         return np.random.uniform(1, 5)
@@ -68,11 +70,14 @@ class GaussianGraph:
             self.L = self.expandL(parents)
 
     def covariance(self):
-        n = len(self.vars)
-        lamb = np.identity(n) - self.L
-        lamb_inv = np.linalg.inv(lamb)
-        phi = np.diag(self.phi)
-        return lamb_inv.T @ phi @ lamb_inv
+        if self.cov is None:
+            n = len(self.vars)
+            lamb = np.identity(n) - self.L
+            lamb_inv = np.linalg.inv(lamb)
+            phi = np.diag(self.phi)
+            self.cov = lamb_inv.T @ phi @ lamb_inv
+        return self.cov
+
 
     def subcovariance(self, rowvars, colvars):
         cov = self.covariance()
@@ -153,3 +158,35 @@ class GaussianGraph:
             if V in self.xvars:
                 df[V] = data[:, i]
         return df
+
+    # Test all possible combinations of subcovariance rank test
+    def allRankTests(self):
+        rankDict = {}
+        n = len(self.xvars)
+        for i in range(2, n-1):
+            Asets = list(combinations(self.xvars, i))
+            for j in range(2, n-1):
+                print(f"Testing i={i} vs j={j}...")
+                Bsets = list(combinations(self.xvars, j))
+
+                for A in Asets:
+                    for B in Bsets:
+                        Aset = frozenset(A)
+                        Bset = frozenset(B)
+
+                        if len(Aset.intersection(Bset)) > 0:
+                            continue
+
+                        key = frozenset([Aset, Bset])
+                        if key in rankDict:
+                            continue
+
+                        A = sorted(A)
+                        B = sorted(B)
+                        cov = self.subcovariance(A, B)
+                        rk = matrix_rank(cov)
+                        rankDict[key] = rk
+        return rankDict
+
+
+
