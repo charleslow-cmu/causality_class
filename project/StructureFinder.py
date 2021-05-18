@@ -113,6 +113,8 @@ class StructureFinder:
             for L, values in self.l.latentDict.items():
                 LCardinality = len(L)
                 existingGroup = values["children"] | values["subgroups"]
+                for subgroup in values["subgroups"]:
+                    existingGroup.update(self.l.latentDict[subgroup]["children"])
                 commonElements = setIntersection(Vs, existingGroup)
                 if len(commonElements) > LCardinality:
                     testingExistingGroup = True
@@ -155,7 +157,7 @@ class StructureFinder:
 
 
     # Algorithm to find the latent structure
-    def findLatentStructure(self, verbose=True, sample=False):
+    def findLatentStructure(self, maxk=3, verbose=True, sample=False):
         self.verbose = verbose
         self.l = LatentGroups(self.g.xvars)
         run = 1
@@ -173,6 +175,9 @@ class StructureFinder:
 
                 k += 1
                 if insufficientVars:
+                    break
+
+                if k > maxk:
                     break
 
             print(f"{'='*10} End of Run {run} {'='*10}")

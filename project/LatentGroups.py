@@ -3,6 +3,7 @@ from misc import *
 from pdb import set_trace
 from copy import deepcopy
 import IPython
+from functools import reduce
 
 # Class to store discovered latent groups
 class LatentGroups():
@@ -14,9 +15,11 @@ class LatentGroups():
         self.tempSet = {}
 
     def findChild(self, V):
+        parents = set()
         for parent, values in self.latentDict.items():
             if V in values["children"]:
-                return parent
+                parents.add(parent)
+        return parents
 
     def updateActiveSet(self):
 
@@ -32,15 +35,96 @@ class LatentGroups():
         self.activeSet = deduplicate(self.activeSet)
 
 
+    def isSplitPoint(self, V):
+        children, subgroups = self.latentDict[V]
+        return len(subgroups) > 1
+
+    def isRoot(self, V):
+        children, subgroups = self.latentDict[V]
+        return len(subgroups) == 0
+
+
+    def findSplitPoints(self, activeVars, splitPoints=[]):
+        for L in activeVars:
+            for V in self.latentDict[L]["subgroups"]:
+                if self.isSplitPoint(V):
+                    splitPoints.append(V)
+                    continue
+                
+                if self.isRoot(V):
+                    splitPoints.append(V)
+                    continue
+                
+                subgroup = self.latentDict[V]["subgroups"][0]
+                splitPoints.extend(self.findSplitPoints(subgroup, splitPoints))
+        return splitPoints
+
+
+    # Find all junctions where variables might have been misplaced
+    def findJunctions(self, activeVars, parent=None, junctions={}):
+
+        # Find split points
+        for V in activeVars:
+            splitPoints = self.findSplitPoints(V)
+            splitPoints = self.findSplitPoints(MinimalGroup(["L11", "L14"]))
+            set_trace()
+
+
+        # activeSet is top junction
+        activeVars = frozenset(activeVars)
+        twocluster = False
+        for V in activeVars:
+            k = len(V)
+            if k >= 2:
+                twocluster = True
+
+        isJunction = False
+        if twocluster and len(activeVars) > 1:
+            isJunction = True
+            if parent is None:
+                junctions["root"] = junctions.get("root", []) + [activeVars]
+            else:
+                junctions[parent] = junctions.get(parent, []) + [activeVars]
+        if isJunction:
+            print(f"{activeVars} is a junction")
+        set_trace()
+
+        for V in activeVars:
+            values = self.latentDict[V]
+            junctions.update(self.findJunctions(values["subgroups"], V, junctions))
+
+        return junctions
+
+
     # When testing for k-AtomicGroups, as long as we have
     # overlap of 1 element that is newly found, we merge them
     # Need to merge, otherwise we create unnecessary latent vars
+
+    # Reject clusters that cause overlap of too many AtomicGroups
     def mergeTempSets(self):
         for k in self.tempSet:
             kTempSets = self.tempSet.pop(k)
             newTempSet = []
+
+            # Check overlap of each variable
+            if len(kTempSets) > 0:
+                variables = reduce(set.union, kTempSets)
+                for var in variables:
+                    parents = self.findChild(var)
+
             while len(kTempSets) > 0:
                 Vs = kTempSets.pop()
+
+                # Check if this is a valid cluster
+                parents = set()
+                for V in Vs:
+                    parents.update(self.findChild(V))
+                parents = deduplicate(parents)
+
+                if setLength(parents) > k:
+                    print(f"Reject cluster {Vs}!")
+                    continue
+
                 overlap = False
                 for i, tempSet in enumerate(newTempSet):
                     commonVs = Vs.intersection(tempSet)
@@ -117,14 +201,13 @@ class LatentGroups():
         gap = k - overlappedCardinality
         dedupedGroups = list(dedupedGroups)
 
-        # if gap is < 0, something is wrong with the other clusters
-        # We dissolve all of them
+        # if gap is < 0, something is wrong
         if gap < 0:
             print(f"AtomicGroup {Vs} is {k} but overlap is {overlappedCardinality}")
-            for group in dedupedGroups:
-                print(f"Dissolving {group}...")
-                self.dissolve(group)
-            return
+            #for group in dedupedGroups:
+            #    print(f"Dissolving {group}...")
+            #    self.dissolve(group)
+            #return
 
         # If Vs just overlaps with exactly 1 Group that is of
         # cardinality k, we can merge them right in
