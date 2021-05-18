@@ -101,13 +101,6 @@ class GaussianGraph:
         test = matrix_rank(cov) <= rk
         return test
 
-    #def infoDist(self, covAA, covBB, covAB):
-    #    det1 = abs(np.linalg.det(covAB))
-    #    det2 = abs(np.linalg.det(covAA))
-    #    det3 = abs(np.linalg.det(covBB))
-    #    dist = -log(det1 / sqrt(det2*det3))
-    #    return dist 
-
 
     def infoDist(self, A, B):
         covAA = self.subcovariance(A, A)
@@ -118,44 +111,6 @@ class GaussianGraph:
         det3 = abs(np.linalg.det(covBB))
         dist = -log(det1 / sqrt(det2*det3))
         return dist 
-
-    # Given a variable set A of size k and B with size >= k
-    #def infoDistRandom(self, A, B):
-    #    k = len(A)
-    #    j = len(B)
-    #    assert j >= k, "B must have greater cardinality"
-    #    covBB = self.subcovariance(B, B) # (j, j)
-    #    covAA = self.subcovariance(A, A) # (k, k)
-    #    covAB = self.subcovariance(A, B) # (k, j)
-
-    #    # Repeatedly trial for different values of B
-    #    dlist = []
-    #    for _ in range(trials):
-
-    #        # Make random coefficients for B
-    #        coefB = np.random.randn(k, j)
-    #        covs1 = self.makeCov(coefA1, coefB, covAA, covBB, covAB)
-    #        covs2 = self.makeCov(coefA2, coefB, covAA, covBB, covAB)
-    #        covs3 = self.makeCov(coefA1, coefA2, covAA, covAA, covAA)
-    #        d1 = self.infoDist(covs1[0], covs1[1], covs1[2])
-    #        d2 = self.infoDist(covs2[0], covs2[1], covs2[2])
-    #        d3 = self.infoDist(covs3[0], covs3[1], covs3[2])
-    #        IPython.embed(); exit(1)
-    #        dlist.append(d1-d2)
-    #    return dlist
-
-    def infoDist2(self, coefB, A, B):
-        covAA = self.subcovariance(A, A)
-        covBB = self.subcovariance(B, B)
-        covAB = self.subcovariance(A, B)
-        newCovBB = coefB @ covBB @ coefB.T # (k, k)
-        newCovAB = covAB @ coefB.T # (k, k)
-        det1 = abs(np.linalg.det(newCovAB))
-        det2 = abs(np.linalg.det(covAA))
-        det3 = abs(np.linalg.det(newCovBB))
-        dist = -log(det1 / sqrt(det2*det3))
-        return dist 
-
 
     def infoDistGen(self, A, B):
         cov = self.subcovariance(A, B)

@@ -129,10 +129,7 @@ class StructureFinder:
             #if alreadyDiscovered == Vs:
             #    continue
 
-            try:
-                rankDeficient = self.structuralRankTest(Vs, k, run, sample)
-            except:
-                set_trace()
+            rankDeficient = self.structuralRankTest(Vs, k, run, sample)
             #vprint(f"Test {Vs}: Rank deficient {rankDeficient}", self.verbose)
 
             if rankDeficient is None:
@@ -150,78 +147,11 @@ class StructureFinder:
                     gap -= 1
 
             if rankDeficient:
-                test = self.verifyCluster(Vs, k=k-gap)
-                if test:
-                    self.l.addToTempSet(Vs, k-gap)
-                    vprint(f"Found {k-gap}-cluster {Vs}.", self.verbose)
-                    anyFound = True
+                self.l.addToTempSet(Vs, k-gap)
+                vprint(f"Found {k-gap}-cluster {Vs}.", self.verbose)
+                anyFound = True
 
         return (anyFound, insufficientVars)
-
-    # Used Generalised Information Distance to Verify if a Cluster is true
-    def verifyCluster(self, Vs, k, trials=20):
-        print(f"Verifying cluster {Vs} of size {k}")
-
-        # k=1 is always true cluster 
-        if k == 1:
-            return True
-
-        # Generate k combinations of Vs
-        subsets = generateSubset(Vs, k=k)
-
-        # Test each k combination
-        # WTS each subset is not covered by the latents
-        n = len(subsets)
-        dlist = []
-
-        # Pick B set from all other vars
-        B = set()
-        remainingVs = setDifference(self.l.activeSet, Vs)
-        for V in remainingVs:
-            B.update(self.l.pickAllMeasures(V))
-        B = self.getMeasuredVarList(B)
-
-
-        A = set()
-        for V in Vs:
-            A.update(self.l.pickAllMeasures(V))
-        A = self.getMeasuredVarList(A)
-
-        cca = self.g.cca(A, B)
-        coefB = cca.x_cancoef[:, 1:].T
-
-        for i in range(1, n):
-            subset1 = subsets[i-1]
-            subset2 = subsets[i]
-
-            A1 = set()
-            for V in subset1:
-                A1.update(self.l.pickRepresentativeMeasures(self.l.latentDict, V))
-
-            A2 = set()
-            for V in subset2:
-                A2.update(self.l.pickRepresentativeMeasures(self.l.latentDict, V))
-
-
-            # Calculate infoDist
-            A1 = self.getMeasuredVarList(A1)
-            A2 = self.getMeasuredVarList(A2)
-            d = self.g.infoDist2(coefB, A1, B) + self.g.infoDist2(coefB, A2, B)\
-                        - self.g.infoDist(A1, A2)
-            dlist.append(d)
-
-            # Check if all dlist is the same
-            # If true, it is a real cluster
-            #test = True
-            #for i in range(1, len(dlist)):
-            #    j = i-1
-            #    if not isclose(dlist[i], dlist[j]):
-            #        test = False
-            #        break
-        set_trace()
-        test = True
-
-        return test
 
 
     # Algorithm to find the latent structure
@@ -257,66 +187,6 @@ class StructureFinder:
 
             if not any(foundList):
                 break
-
-
-
-
-
-    # Run search until convergence on each k before moving on
-    #def findLatentStructure2(self, verbose=True, sample=False):
-    #    self.verbose = verbose
-    #    self.l = LatentGroups(self.g.xvars)
-    #    run = 1
-
-    #    k = 1
-    #    while True:
-    #        foundList = []
-
-    #        # Run until convergence for this k value
-    #        while True:
-    #            anyFound, insufficientVars = self.runStructuralRankTest(k=k, 
-    #                    run=run, sample=sample)
-    #            self.l.mergeTempSets()
-    #            self.l.confirmTempSets() 
-
-    #            # Remove variables belonging to a Group from activeSet
-    #            # Set Groups as activeSet
-    #            for parent in self.l.latentDict.keys():
-    #                self.l.activeSet.add(parent)
-
-    #            for values in self.l.latentDict.values():
-    #                self.l.activeSet = setDifference(self.l.activeSet, 
-    #                                                 values["children"])
-    #            
-    #            self.l.activeSet = deduplicate(self.l.activeSet)
-    #            print(f"Active Set: {self.l.activeSet}")
-
-    #            foundList.append(anyFound)
-    #            if not anyFound:
-    #                break
-
-    #            if insufficientVars:
-    #                break
-
-    #        print(f"{'='*10} End of Run {run} {'='*10}")
-    #        print(f"Current State:")
-    #        pprint(self.l.latentDict, self.verbose)
-    #        run += 1
-    #        print(f"{'='*30}")
-
-    #        # Move on to new k value
-    #        k += 1
-
-    #        # If we found anything new in this search, reset k=1
-    #        # Basically k can only advance if nothing new is found in all
-    #        # smaller values
-    #        if any(foundList):
-    #            k = 1
-
-    #        if k > setLength(self.l.activeSet)/2:
-    #            break
-
-
 
     # Return a node and edge set for plotting with networkx
     def reportDiscoveredGraph(self):
