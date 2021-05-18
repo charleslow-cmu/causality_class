@@ -35,65 +35,44 @@ class LatentGroups():
         self.activeSet = deduplicate(self.activeSet)
 
 
-    def isSplitPoint(self, V):
-        children, subgroups = self.latentDict[V]
-        return len(subgroups) > 1
 
-    def isRoot(self, V):
-        children, subgroups = self.latentDict[V]
-        return len(subgroups) == 0
+    # Root is always a split point
+    # P is the ancestor junction, L is current node testing
+    def findJunctions(self, L=None, P=None, junctions={}):
 
+        if L is None:
+            root = MinimalGroup("root")
+            junctions[root] = set()
+            for L in self.activeSet:
+                j = self.findJunctions(L, root)
+                junctions.update(j)
 
-    def findSplitPoints(self, activeVars, splitPoints=[]):
-        for L in activeVars:
-            for V in self.latentDict[L]["subgroups"]:
-                if self.isSplitPoint(V):
-                    splitPoints.append(V)
-                    continue
-                
-                if self.isRoot(V):
-                    splitPoints.append(V)
-                    continue
-                
-                subgroup = self.latentDict[V]["subgroups"][0]
-                splitPoints.extend(self.findSplitPoints(subgroup, splitPoints))
-        return splitPoints
+        else:
+            values = self.latentDict[L]
+            subgroups = values["subgroups"]
 
+            # This is a junction and we include it
+            # Continue search
+            if len(subgroups) > 1:
+                print(f"Found junction {L}")
+                junctions[P] = junctions.get(P, set()) | set([L])
+                for subgroup in subgroups:
+                    j = self.findJunctions(subgroup, L)
+                    junctions.update(j)
 
-    # Find all junctions where variables might have been misplaced
-    def findJunctions(self, activeVars, parent=None, junctions={}):
+            # Continue search if only one subgroup
+            if len(subgroups) == 1:
+                print(f"{L} is not a junction: 1 child")
+                subgroup = next(iter(subgroups))
+                junctions.update(self.findJunctions(subgroup, P))
 
-        # Find split points
-        for V in activeVars:
-            splitPoints = self.findSplitPoints(V)
-            splitPoints = self.findSplitPoints(MinimalGroup(["L11", "L14"]))
-            set_trace()
-
-
-        # activeSet is top junction
-        activeVars = frozenset(activeVars)
-        twocluster = False
-        for V in activeVars:
-            k = len(V)
-            if k >= 2:
-                twocluster = True
-
-        isJunction = False
-        if twocluster and len(activeVars) > 1:
-            isJunction = True
-            if parent is None:
-                junctions["root"] = junctions.get("root", []) + [activeVars]
-            else:
-                junctions[parent] = junctions.get(parent, []) + [activeVars]
-        if isJunction:
-            print(f"{activeVars} is a junction")
-        set_trace()
-
-        for V in activeVars:
-            values = self.latentDict[V]
-            junctions.update(self.findJunctions(values["subgroups"], V, junctions))
+            # Terminate search when we hit the root
+            if len(subgroups) == 0:
+                print(f"{L} is not a junction: root")
+                return junctions
 
         return junctions
+
 
 
     # When testing for k-AtomicGroups, as long as we have

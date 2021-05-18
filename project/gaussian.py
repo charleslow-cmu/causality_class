@@ -50,8 +50,8 @@ def runScenario(scenario=None, maxk=3):
 
 
 if __name__ == "__main__":
-    model = runScenario("5c", maxk=3)
-    junctions = model.l.findJunctions(model.l.activeSet)
+    model = runScenario("5b", maxk=5)
+    junctions = model.l.findJunctions()
     IPython.embed(); exit(1)
 
     #sampleSize = 2000
