@@ -150,82 +150,78 @@ class StructureFinder:
                     gap -= 1
 
             if rankDeficient:
-                self.l.addToTempSet(Vs, k-gap)
-                vprint(f"Found {k-gap}-cluster {Vs}.", self.verbose)
-                anyFound = True
+                test = self.verifyCluster(Vs, k=k-gap)
+                if test:
+                    self.l.addToTempSet(Vs, k-gap)
+                    vprint(f"Found {k-gap}-cluster {Vs}.", self.verbose)
+                    anyFound = True
 
         return (anyFound, insufficientVars)
 
+    # Used Generalised Information Distance to Verify if a Cluster is true
+    def verifyCluster(self, Vs, k, trials=20):
+        print(f"Verifying cluster {Vs} of size {k}")
 
-    # Depth-first search for any change
-    def refineClusters(self, run, sample=False):
-        print(f"Refining Clusters...")
-        print(f"activeSet is {self.l.activeSet}")
+        # k=1 is always true cluster 
+        if k == 1:
+            return True
 
-        # Get activeVars that are more than k=1 cardinality
-        activeVars = {}
-        for V in self.l.activeSet:
-            activeVars[len(V)] = activeVars.get(len(V), []) + [V]
-        activeList = []
-        for j in activeVars.keys():
-            if j == 1:
-                continue
-            activeList.extend(activeVars[j])
-        
-        # Cycle through variables in activeList
-        for L in activeList:
-            change = False
-            latentDictCopy = deepcopy(self.l.latentDict)
+        # Generate k combinations of Vs
+        subsets = generateSubset(Vs, k=k)
 
-            if not L.isLatent():
-                continue
+        # Test each k combination
+        # WTS each subset is not covered by the latents
+        n = len(subsets)
+        dlist = []
 
-            if not L in self.l.activeSet:
-                continue
+        # Pick B set from all other vars
+        B = set()
+        remainingVs = setDifference(self.l.activeSet, Vs)
+        for V in remainingVs:
+            B.update(self.l.pickAllMeasures(V))
+        B = self.getMeasuredVarList(B)
 
-            # We shouldn't need to go down to the root, since if the
-            # higher branch does not change, then the rest should not change either?
-            # Seems to be false..
 
-            # Recursively dissolve to the leaves of this branch
-            self.l.dissolveR(L)
-            print(f"activeSet is {self.l.activeSet}")
+        A = set()
+        for V in Vs:
+            A.update(self.l.pickAllMeasures(V))
+        A = self.getMeasuredVarList(A)
 
-            while True:
-                k = 1
-                foundList = []
-                while True:
-                    anyFound, insufficientVars = \
-                            self.runStructuralRankTest(k=k, run=run, sample=sample)
+        cca = self.g.cca(A, B)
+        coefB = cca.x_cancoef[:, 1:].T
 
-                    self.l.mergeTempSets()
-                    self.l.confirmTempSets() 
-                    foundList.append(anyFound)
+        for i in range(1, n):
+            subset1 = subsets[i-1]
+            subset2 = subsets[i]
 
-                    k += 1
-                    if insufficientVars:
-                        break
+            A1 = set()
+            for V in subset1:
+                A1.update(self.l.pickRepresentativeMeasures(self.l.latentDict, V))
 
-                print(f"{'='*10} End of Run {run} {'='*10}")
-                print(f"Current State:")
-                pprint(self.l.latentDict, self.verbose)
-                run += 1
+            A2 = set()
+            for V in subset2:
+                A2.update(self.l.pickRepresentativeMeasures(self.l.latentDict, V))
 
-                # Update the activeSet
-                self.l.updateActiveSet()
-                print(f"Active Set: {self.l.activeSet}")
-                print(f"{'='*30}")
 
-                if not any(foundList):
-                    break
-            break
+            # Calculate infoDist
+            A1 = self.getMeasuredVarList(A1)
+            A2 = self.getMeasuredVarList(A2)
+            d = self.g.infoDist2(coefB, A1, B) + self.g.infoDist2(coefB, A2, B)\
+                        - self.g.infoDist(A1, A2)
+            dlist.append(d)
 
-            # Put the cluster back together if no change
-            #if not change:
-            #    self.l.latentDict = latentDictCopy
-            #    self.l.updateActiveSet()
-            #    set_trace()
+            # Check if all dlist is the same
+            # If true, it is a real cluster
+            #test = True
+            #for i in range(1, len(dlist)):
+            #    j = i-1
+            #    if not isclose(dlist[i], dlist[j]):
+            #        test = False
+            #        break
+        set_trace()
+        test = True
 
+        return test
 
 
     # Algorithm to find the latent structure
@@ -261,9 +257,6 @@ class StructureFinder:
 
             if not any(foundList):
                 break
-
-        # Refine clusters
-        #self.refineClusters(run=run, sample=sample)
 
 
 

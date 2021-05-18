@@ -6,6 +6,7 @@ from pdb import set_trace
 import sys
 import IPython
 from itertools import combinations
+from statsmodels.multivariate.cancorr import CanCorr
 
 class GaussianGraph:
     def __init__(self):
@@ -24,6 +25,12 @@ class GaussianGraph:
         while abs(coef) < 0.5:
             coef = np.random.uniform(low=-5, high=5)
         return coef
+
+    def cca(self, A, B):
+        X = self.df.loc[:, A]
+        Y = self.df.loc[:, B]
+        cca = CanCorr(X, Y)
+        return cca
 
     def getParentIndex(self, parents):
         if isinstance(parents, str):
@@ -94,7 +101,18 @@ class GaussianGraph:
         test = matrix_rank(cov) <= rk
         return test
 
-    def infoDist(self, covAA, covBB, covAB):
+    #def infoDist(self, covAA, covBB, covAB):
+    #    det1 = abs(np.linalg.det(covAB))
+    #    det2 = abs(np.linalg.det(covAA))
+    #    det3 = abs(np.linalg.det(covBB))
+    #    dist = -log(det1 / sqrt(det2*det3))
+    #    return dist 
+
+
+    def infoDist(self, A, B):
+        covAA = self.subcovariance(A, A)
+        covBB = self.subcovariance(B, B)
+        covAB = self.subcovariance(A, B)
         det1 = abs(np.linalg.det(covAB))
         det2 = abs(np.linalg.det(covAA))
         det3 = abs(np.linalg.det(covBB))
@@ -102,37 +120,41 @@ class GaussianGraph:
         return dist 
 
     # Given a variable set A of size k and B with size >= k
-    def infoDistRandom(self, A, B, trials=10):
-        k = len(A)
-        j = len(B)
-        assert j >= k, "B must have greater cardinality"
-        covAA = self.subcovariance(A, A) # (k, k)
-        covBB = self.subcovariance(B, B) # (j, j)
-        covAB = self.subcovariance(A, B) # (k, j)
+    #def infoDistRandom(self, A, B):
+    #    k = len(A)
+    #    j = len(B)
+    #    assert j >= k, "B must have greater cardinality"
+    #    covBB = self.subcovariance(B, B) # (j, j)
+    #    covAA = self.subcovariance(A, A) # (k, k)
+    #    covAB = self.subcovariance(A, B) # (k, j)
 
-        # Make random coefficients for A
-        coefA1 = np.random.randn(k, k)
-        coefA2 = np.random.randn(k, k)
+    #    # Repeatedly trial for different values of B
+    #    dlist = []
+    #    for _ in range(trials):
 
-        # Repeatedly trial for different values of B
-        dlist = []
-        for _ in range(trials):
+    #        # Make random coefficients for B
+    #        coefB = np.random.randn(k, j)
+    #        covs1 = self.makeCov(coefA1, coefB, covAA, covBB, covAB)
+    #        covs2 = self.makeCov(coefA2, coefB, covAA, covBB, covAB)
+    #        covs3 = self.makeCov(coefA1, coefA2, covAA, covAA, covAA)
+    #        d1 = self.infoDist(covs1[0], covs1[1], covs1[2])
+    #        d2 = self.infoDist(covs2[0], covs2[1], covs2[2])
+    #        d3 = self.infoDist(covs3[0], covs3[1], covs3[2])
+    #        IPython.embed(); exit(1)
+    #        dlist.append(d1-d2)
+    #    return dlist
 
-            # Make random coefficients for B
-            coefB = np.random.randn(k, j)
-            covs1 = self.makeCov(coefA1, coefB, covAA, covBB, covAB)
-            covs2 = self.makeCov(coefA2, coefB, covAA, covBB, covAB)
-            d1 = self.infoDist(covs1[0], covs1[1], covs1[2])
-            d2 = self.infoDist(covs2[0], covs2[1], covs2[2])
-            dlist.append(d1-d2)
-        return dlist
-
-
-    def makeCov(self, coefA, coefB, covAA, covBB, covAB):
-        newCovAA = coefA @ covAA @ coefA.T # (k, k)
+    def infoDist2(self, coefB, A, B):
+        covAA = self.subcovariance(A, A)
+        covBB = self.subcovariance(B, B)
+        covAB = self.subcovariance(A, B)
         newCovBB = coefB @ covBB @ coefB.T # (k, k)
-        newCovAB = coefA @ covAB @ coefB.T # (k, k)
-        return newCovAA, newCovBB, newCovAB
+        newCovAB = covAB @ coefB.T # (k, k)
+        det1 = abs(np.linalg.det(newCovAB))
+        det2 = abs(np.linalg.det(covAA))
+        det3 = abs(np.linalg.det(newCovBB))
+        dist = -log(det1 / sqrt(det2*det3))
+        return dist 
 
 
     def infoDistGen(self, A, B):

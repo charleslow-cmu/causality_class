@@ -76,7 +76,9 @@ def runScenario(scenario=None):
     def run(scenario):
         g = scenarios[scenario]()
         model = StructureFinder(g, alpha=0.05)
-        model.addSample(g.generateData(2000))
+        df = g.generateData(2000)
+        model.addSample(df)
+        g.df = df
         model.findLatentStructure(verbose=True, sample=False)
         printGraph(model, f'plots/scenario{scenario}.png')
 
@@ -88,7 +90,7 @@ def runScenario(scenario=None):
 
 
 if __name__ == "__main__":
-    runScenario("5b")
+    runScenario("3a")
 
     #sampleSize = 2000
     #scenario = "7"
