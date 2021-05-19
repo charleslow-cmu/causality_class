@@ -42,7 +42,7 @@ def runScenario(scenario=None, maxk=3, refine=False):
 
 
 if __name__ == "__main__":
-    model = runScenario("5c", maxk=5, refine=True)
+    model = runScenario("5b", maxk=5, refine=True)
 
     # Root operation
     #root = Group("root")

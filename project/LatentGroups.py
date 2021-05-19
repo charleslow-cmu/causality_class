@@ -361,6 +361,10 @@ class LatentGroups():
     # As opposed to pickRepresentativeMeasures, pickAllMeasures 
     # recursively picks all measured variables that are in the subgroups
     # of the provided Group.
+
+
+    # PROBLEM: When we dissolve children of a junction, we must ensure
+    # that we can still represent the junction by its parents' variables.
     def pickAllMeasures(self, L):
         assert isinstance(L, Group), "L is not a Group."
 

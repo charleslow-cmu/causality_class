@@ -132,7 +132,10 @@ class StructureFinder:
             #if alreadyDiscovered == Vs:
             #    continue
 
-            rankDeficient = self.structuralRankTest(Vs, k, run, sample)
+            try:
+                rankDeficient = self.structuralRankTest(Vs, k, run, sample)
+            except:
+                set_trace()
             #vprint(f"Test {Vs}: Rank deficient {rankDeficient}", self.verbose)
 
             if rankDeficient is None:
@@ -162,39 +165,41 @@ class StructureFinder:
         print(f"{'='*10} Refining Clusters! {'='*10}")
         junctions = self.l.findJunctions()
         print(junctions)
-        set_trace()
+        self.refineBranch(Group("root"), junctions)
+
+
+    def refineBranch(self, junction, junctions):
+        print(f"{'='*10} Refining Cluster {junction}! {'='*10}")
 
         # Kick off refining from Root
-        root = Group("root")
-        activeVars = deepcopy(self.l.activeSet)
-        for L in activeVars:
-            self.refineBranch(L, root, junctions)
-            set_trace()
+        if junction == Group("root"):
+            subgroups = deepcopy(self.l.activeSet)
+        else:
+            values = self.l.latentDict[junction]
+            subgroups = values["subgroups"]
 
-        # Run for each junction
+        # The parent at the junction is our starting point
+        if not junction == Group("root"):
+            self.l.activeSet = set([junction])
 
-    # Dissolve a branch and rerun search procedure to improve clusters
-    def refineBranch(self, L, P, junctions):
-
-        print(f"Refining Junction: {P} - {L}")
-        print('='*30)
-
-        # Set active variables (it is the parent)
-        if not P == Group("root"):
-            self.l.activeSet = set([P])
-
+        # Find out where to stop
         stopJunctions = set()
-        if P in junctions:
-            stopJunctions = junctions[P]
-        self.l.dissolveRecursive(L, stopJunctions)
-        self.findLatentStructure()
+        if junction in junctions:
+            stopJunctions = junctions[junction]
 
-        # Kick off refining for children
-        nextJunctions = set()
-        if L in junctions:
-            nextJunctions = junctions[L]
-        for j in nextJunctions:
-            self.refineBranch(j, L, junctions)
+        # Dissolve all the down stream branches
+        # until the stopJunctions
+        for L in subgroups:
+            self.l.dissolveRecursive(L, stopJunctions)
+
+        # Rerun search procedure
+        self.findLatentStructure()
+        set_trace()
+
+        # Then go down the tree
+        if junction in junctions:
+            for j in junctions[junction]:
+                self.refineBranch(j, junctions)
 
 
     # Algorithm to find the latent structure
