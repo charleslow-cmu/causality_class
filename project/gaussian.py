@@ -14,7 +14,7 @@ import os
 import pydot
 
 from GaussianGraph import GaussianGraph
-from MinimalGroup import MinimalGroup
+from Group import Group
 from LatentGroups import LatentGroups
 from StructureFinder import StructureFinder
 from RankTester import RankTester
@@ -23,23 +23,15 @@ from StructureComparer import StructureComparer
 from misc import *
 from scenarios import *
 
-def printGraph(model, outpath):
-    G = getGraph(model.l)
-    G.toDot("example.dot")
-    graphs = pydot.graph_from_dot_file('example.dot')
-    graphs[0].set_size('"8,8!"')
-    graphs[0].write_png(outpath)
 
-
-def runScenario(scenario=None, maxk=3):
+def runScenario(scenario=None, maxk=3, refine=False):
     def run(scenario):
         g = scenarios[scenario]()
         model = StructureFinder(g, alpha=0.05)
-        df = g.generateData(2000)
-        model.addSample(df)
-        g.df = df
         model.findLatentStructure(maxk=maxk, verbose=True, sample=False)
-        printGraph(model, f'plots/scenario{scenario}.png')
+        if refine:
+            model.refineClusters()
+        model.printGraph(f'plots/scenario{scenario}.png')
         return model
 
     if scenario is None:
@@ -50,9 +42,13 @@ def runScenario(scenario=None, maxk=3):
 
 
 if __name__ == "__main__":
-    model = runScenario("5b", maxk=5)
-    junctions = model.l.findJunctions()
-    IPython.embed(); exit(1)
+    model = runScenario("5c", maxk=5, refine=True)
+
+    # Root operation
+    #root = Group("root")
+    #activeVars = deepcopy(model.l.activeSet)
+    #for L in activeVars:
+    #    model.refineBranch(L, root, junctions)
 
     #sampleSize = 2000
     #scenario = "7"

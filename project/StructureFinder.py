@@ -11,6 +11,7 @@ from CCARankTester import CCARankTester
 import IPython
 from itertools import product
 from statsmodels.multivariate.cancorr import CanCorr
+import pydot
 
 class StructureFinder:
 
@@ -36,8 +37,8 @@ class StructureFinder:
         test = self.rankTester.test(I, J, r=rk)
         return not test
 
-    # Extract all measured vars in a list from a set of MinimalGroups
-    # A: a set of MinimalGroups
+    # Extract all measured vars in a list from a set of Groups
+    # A: a set of Groups
     def getMeasuredVarList(self, A):
         measuredVars = []
         for a in A:
@@ -50,7 +51,7 @@ class StructureFinder:
 
 
     # Test if A forms a group by seeing if rank(subcov[A,B]) <= k-1
-    # A and B are sets of MinimalGroups
+    # A and B are sets of Groups
     # A: Take all measures of Vs
     # B: Take all measures not in Vs
     # Returns True if rank deficient, False otherwise
@@ -150,16 +151,57 @@ class StructureFinder:
 
             if rankDeficient:
                 self.l.addToTempSet(Vs, k-gap)
-                vprint(f"Found {k-gap}-cluster {Vs}.", self.verbose)
+                #vprint(f"Found {k-gap}-cluster {Vs}.", self.verbose)
                 anyFound = True
 
         return (anyFound, insufficientVars)
 
 
+    # Run the refining step
+    def refineClusters(self):
+        print(f"{'='*10} Refining Clusters! {'='*10}")
+        junctions = self.l.findJunctions()
+        print(junctions)
+        set_trace()
+
+        # Kick off refining from Root
+        root = Group("root")
+        activeVars = deepcopy(self.l.activeSet)
+        for L in activeVars:
+            self.refineBranch(L, root, junctions)
+            set_trace()
+
+        # Run for each junction
+
+    # Dissolve a branch and rerun search procedure to improve clusters
+    def refineBranch(self, L, P, junctions):
+
+        print(f"Refining Junction: {P} - {L}")
+        print('='*30)
+
+        # Set active variables (it is the parent)
+        if not P == Group("root"):
+            self.l.activeSet = set([P])
+
+        stopJunctions = set()
+        if P in junctions:
+            stopJunctions = junctions[P]
+        self.l.dissolveRecursive(L, stopJunctions)
+        self.findLatentStructure()
+
+        # Kick off refining for children
+        nextJunctions = set()
+        if L in junctions:
+            nextJunctions = junctions[L]
+        for j in nextJunctions:
+            self.refineBranch(j, L, junctions)
+
+
     # Algorithm to find the latent structure
     def findLatentStructure(self, maxk=3, verbose=True, sample=False):
         self.verbose = verbose
-        self.l = LatentGroups(self.g.xvars)
+        if self.l is None:
+            self.l = LatentGroups(self.g.xvars)
         run = 1
 
         while True:
@@ -211,3 +253,10 @@ class StructureFinder:
                         edges.add((parent, child))
         return (nodes, edges)
 
+    def printGraph(self, outpath):
+        G = getGraph(self.l)
+        G.toDot("example.dot")
+        graphs = pydot.graph_from_dot_file('example.dot')
+        graphs[0].set_size('"8,8!"')
+        graphs[0].write_png(outpath)
+    

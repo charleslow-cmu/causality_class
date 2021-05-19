@@ -1,4 +1,4 @@
-from MinimalGroup import MinimalGroup
+from Group import Group
 from MixedGraph import MixedGraph
 from copy import deepcopy
 from math import factorial as fac
@@ -14,14 +14,14 @@ def setLength(varset):
     assert not isinstance(varset, str), "Cannot be string."
     n = 0
     for vset in varset:
-        if isinstance(vset, MinimalGroup):
+        if isinstance(vset, Group):
             n += len(vset)
         else:
-            assert False, "Should be MinimalGroup."
+            assert False, "Should be Group."
     return n
 
 
-# Take difference between sets of MinimalGroups
+# Take difference between sets of Groups
 def setDifference(As, Bs):
     diff = As - Bs # first remove any common elements
     newset = set()
@@ -36,7 +36,7 @@ def setDifference(As, Bs):
 
 
 # Check if any element exists in the intersection of two
-# sets of MinimalGroups
+# sets of Groups
 def setOverlap(As, Bs):
     if len(As.intersection(Bs)) > 0:
         return True
@@ -56,7 +56,7 @@ def setIntersection(As, Bs):
     return Avars.intersection(Bvars)
 
 
-# Given a set of MinimalGroups
+# Given a set of Groups
 # Deduplicate cases where Vs includes {L1, {L1, L3}}
 # into just {{L1, L3}}
 def deduplicate(Vs):
@@ -76,9 +76,9 @@ def vprint(s, verbose=False):
     if verbose:
         print(s)
 
-# generateSubset: Generate set of MinimalGroups of variables 
-# vset: set of MinimalGroup of variables
-# Returns: list of sets of MinimalGroups, each set has setLength = k
+# generateSubset: Generate set of Groups of variables 
+# vset: set of Group of variables
+# Returns: list of sets of Groups, each set has setLength = k
 def generateSubset(vset, k=2):
 
     def recursiveSearch(d, gap, currSubset=set()):
@@ -91,7 +91,7 @@ def generateSubset(vset, k=2):
         if len(d) == 0:
             return setlist
 
-        # Pop MinimalGroups larger than current gap, we cannot take
+        # Pop Groups larger than current gap, we cannot take
         # any of them in
         maxDim = max(d)
         while maxDim > gap:
@@ -100,7 +100,7 @@ def generateSubset(vset, k=2):
                 return setlist
             maxDim = max(d)
 
-        # Pop one MinimalGroup
+        # Pop one Group
         v = d[maxDim].pop()
         if len(d[maxDim]) == 0:
             d.pop(maxDim)
@@ -134,7 +134,7 @@ def generateSubset(vset, k=2):
     # of frozensets of variables
     d = {}
     for v in vset:
-        assert isinstance(v, MinimalGroup), "Should be MinimalGroup."
+        assert isinstance(v, Group), "Should be Group."
         n = len(v)
         d[n] = d.get(n, set()).union([v])
 
@@ -148,7 +148,7 @@ def generateSubset(vset, k=2):
 
 # Check if new group of latent vars exists in a current
 # list of latent vars
-def groupInLatentSet(V: MinimalGroup, currSubset: set):
+def groupInLatentSet(V: Group, currSubset: set):
     for group in currSubset:
         if len(V.vars.intersection(group.vars)) > 0:
             return True

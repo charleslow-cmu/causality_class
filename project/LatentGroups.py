@@ -1,4 +1,4 @@
-from MinimalGroup import MinimalGroup
+from Group import Group
 from misc import *
 from pdb import set_trace
 from copy import deepcopy
@@ -9,8 +9,8 @@ from functools import reduce
 class LatentGroups():
     def __init__(self, X):
         self.i = 1
-        self.X = set([MinimalGroup(x) for x in X])
-        self.activeSet = set([MinimalGroup(x) for x in X])
+        self.X = set([Group(x) for x in X])
+        self.activeSet = set([Group(x) for x in X])
         self.latentDict = {}
         self.tempSet = {}
 
@@ -25,10 +25,12 @@ class LatentGroups():
 
         # Remove variables belonging to a Group from activeSet
         # Set Groups as activeSet
+        # Only update MinimalGroups
         for parent in self.latentDict.keys():
-            self.activeSet.add(parent)
+            if parent.isMinimal():
+                self.activeSet.add(parent)
 
-        for values in self.latentDict.values():
+        for parent, values in self.latentDict.items():
             self.activeSet = setDifference(self.activeSet, 
                                              values["children"])
             
@@ -41,7 +43,7 @@ class LatentGroups():
     def findJunctions(self, L=None, P=None, junctions={}):
 
         if L is None:
-            root = MinimalGroup("root")
+            root = Group("root")
             junctions[root] = set()
             for L in self.activeSet:
                 j = self.findJunctions(L, root)
@@ -54,7 +56,7 @@ class LatentGroups():
             # This is a junction and we include it
             # Continue search
             if len(subgroups) > 1:
-                print(f"Found junction {L}")
+                #print(f"Found junction {L}")
                 junctions[P] = junctions.get(P, set()) | set([L])
                 for subgroup in subgroups:
                     j = self.findJunctions(subgroup, L)
@@ -62,13 +64,13 @@ class LatentGroups():
 
             # Continue search if only one subgroup
             if len(subgroups) == 1:
-                print(f"{L} is not a junction: 1 child")
+                #print(f"{L} is not a junction: 1 child")
                 subgroup = next(iter(subgroups))
                 junctions.update(self.findJunctions(subgroup, P))
 
             # Terminate search when we hit the root
             if len(subgroups) == 0:
-                print(f"{L} is not a junction: root")
+                #print(f"{L} is not a junction: root")
                 return junctions
 
         return junctions
@@ -81,8 +83,10 @@ class LatentGroups():
 
     # Reject clusters that cause overlap of too many AtomicGroups
     def mergeTempSets(self):
-        for k in self.tempSet:
-            kTempSets = self.tempSet.pop(k)
+        tempSetCopy = deepcopy(self.tempSet)
+        self.tempSet = {}
+        while len(tempSetCopy) > 0:
+            k, kTempSets = tempSetCopy.popitem()
             newTempSet = []
 
             # Check overlap of each variable
@@ -95,16 +99,16 @@ class LatentGroups():
                 Vs = kTempSets.pop()
 
                 # Check if this is a valid cluster
-                parents = set()
-                for V in Vs:
-                    parents.update(self.findChild(V))
-                parents = deduplicate(parents)
+                #parents = set()
+                #for V in Vs:
+                #    parents.update(self.findChild(V))
+                #parents = deduplicate(parents)
 
-                if setLength(parents) > k:
-                    print(f"Reject cluster {Vs}!")
-                    continue
+                #if setLength(parents) > k:
+                #    continue
 
                 overlap = False
+                print(f"Found {k}-cluster {Vs}!")
                 for i, tempSet in enumerate(newTempSet):
                     commonVs = Vs.intersection(tempSet)
 
@@ -145,8 +149,16 @@ class LatentGroups():
     
     # Remove a cluster
     def dissolve(self, V):
-        assert isinstance(V, MinimalGroup), f"{V} must be MinimalGroup"
+        assert isinstance(V, Group), f"{V} must be Group"
         print(f"Dissolving {V}...")
+
+        # Remove from subgroups of parents
+        for parent, values in self.latentDict.items():
+            if V in values["subgroups"]:
+                self.latentDict[parent]["subgroups"] = \
+                        self.latentDict[parent]["subgroups"] - set([V])
+
+
         values = self.latentDict.pop(V)
         self.activeSet.update(values["children"])
         self.activeSet = setDifference(self.activeSet, set([V]))
@@ -154,14 +166,16 @@ class LatentGroups():
 
 
     # Recursively dissolve to the leaves of this branch
-    def dissolveR(self, L):
-        Vs, subgroups = self.dissolve(L)
-        for subgroup in subgroups:
-            self.dissolveR(subgroup)
+    # or if we hit the nextJunctions
+    def dissolveRecursive(self, L, nextJunctions):
+        if not L in nextJunctions:
+            Vs, subgroups = self.dissolve(L)
+            for subgroup in subgroups:
+                self.dissolveRecursive(subgroup, nextJunctions)
 
 
     # Create a new Minimal Latent Group
-    # As: Set of MinimalGroups to add as children
+    # As: Set of Groups to add as children
     # If Ls is empty, we simply create new latent variables
     def addToDict(self, Vs, latentSize=1):
         d = self.latentDict
@@ -216,20 +230,16 @@ class LatentGroups():
 
             # Update the entry
             d[parent] = values
-
-            # Update corresponding entry in invertedDict
-            #for existingGroup in self.invertedDict.keys():
-            #    if oldChildren <= existingGroup:
-            #        self.invertedDict.pop(frozenset(existingGroup))
-            #        newGroup = values["children"].union(existingGroup)
-            #        self.invertedDict[frozenset(newGroup)] = len(parent)
-            #        break
             return
 
         # If Vs overlaps with more than 1 Group
         # If there is no overlap at all
         # If there is overlap but not enough to hit cardinality k
         # Then we need to create new Latent Variables
+        
+        # Whether this Group is minimal or not.
+        isMinimal = gap > 0
+
         newParentList = []
         for group in dedupedGroups:
             for parent in group.vars:
@@ -238,7 +248,7 @@ class LatentGroups():
         for _ in range(gap):
             newParentList.append(f"L{self.i}")
             self.i += 1
-        newParents = MinimalGroup(newParentList)
+        newParents = Group(newParentList, isMinimal)
 
         # Create a subgroup pointer for each latent var
         subgroups = set()
@@ -283,7 +293,7 @@ class LatentGroups():
 
     def pickKSets(self, V, setlist=[set()], usedXs=set()):
 
-        assert isinstance(V, MinimalGroup), f"{V} is not a MinimalGroup."
+        assert isinstance(V, Group), f"{V} is not a Group."
         if not V.isLatent():
             return [set([V])]
     
@@ -318,8 +328,8 @@ class LatentGroups():
 
     # Recursive search for one X per latent var in minimal group L
     def pickRepresentativeMeasures(self, latentDict, L, usedXs=set()):
-        assert isinstance(L, MinimalGroup), "L is not a MinimalGroup."
-        if isinstance(usedXs, MinimalGroup):
+        assert isinstance(L, Group), "L is not a Group."
+        if isinstance(usedXs, Group):
             usedXs = set([usedXs])
 
         if not L.isLatent():
@@ -350,9 +360,9 @@ class LatentGroups():
 
     # As opposed to pickRepresentativeMeasures, pickAllMeasures 
     # recursively picks all measured variables that are in the subgroups
-    # of the provided MinimalGroup.
+    # of the provided Group.
     def pickAllMeasures(self, L):
-        assert isinstance(L, MinimalGroup), "L is not a MinimalGroup."
+        assert isinstance(L, Group), "L is not a Group."
 
         if not L.isLatent():
             return set([L])
